@@ -22,21 +22,35 @@ QR text ─► parse ─► merge with the form's defaults ─► validate ─�
 
 ## Deploying behind nginx
 
+Install the dependencies, then run the app with pm2:
+
 ```bash
-sudo ./install.sh                  # service + nginx site for qr.tooscore.ir
-sudo ./install.sh --certbot        # …and obtain the certificate
-sudo ./install.sh --no-nginx       # service only
-./install.sh --run                 # just run it in the foreground, no root
+./install.sh                     # deps + .env + nginx site for qr.tooscore.ir
+./install.sh --certbot           # …and obtain the certificate
+./install.sh --no-nginx          # skip the nginx site
+
+pm2 start ecosystem.config.js    # start it
+pm2 save && pm2 startup          # survive a reboot
 ```
 
 The panel is **one Node process** — it serves the front-end from `public/` and
 proxies the Orash API. There is no separate backend to start.
 
-The installer writes `.env` from `.env.example` if missing, renders
-`deploy/orash-scan.service` into systemd (running as the invoking user, with
-`EnvironmentFile=.env`), installs `deploy/nginx/qr.tooscore.ir.conf`, and then
-checks that the service actually answers rather than trusting the unit state.
-Re-running is safe.
+`install.sh` only prepares the machine; it never starts the app. It checks
+Node.js, installs pm2 if missing, runs `npm ci`, creates `.env` from
+`.env.example` if absent, and installs `deploy/nginx/qr.tooscore.ir.conf`. It
+escalates with sudo only for the steps that need it, and re-running is safe.
+
+pm2 reads `ecosystem.config.js`, which runs a **single** fork-mode process: the
+scan relay holds pairing sessions in memory, so a second instance would not see
+sessions created by the first. Configuration is left to `.env`, which the app
+loads itself — pm2 injects nothing, so there is one source of truth.
+
+```
+pm2 logs orash-scan       follow the log
+pm2 restart orash-scan    after editing .env
+pm2 status                is it up
+```
 
 ### Configuration
 
