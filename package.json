@@ -1,0 +1,15 @@
+{
+  "name": "orash-invoice-panel",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local panel + proxy to build and submit Orash CreateGood/CreateInvoice requests, with QR scanning from a USB scanner, a webcam, or a paired phone.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "start:mock": "node -e \"process.env.MOCK=1;require('./server.js')\"",
+    "start:http": "node -e \"process.env.HTTPS=0;require('./server.js')\""
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

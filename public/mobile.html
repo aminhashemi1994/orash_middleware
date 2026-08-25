@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>اسکنر اوراش</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="mobile">
+  <header class="topbar">
+    <h1>اسکنر اوراش</h1>
+    <span id="linkState" class="pill">اتصال…</span>
+  </header>
+
+  <main>
+    <section class="card" id="pairCard">
+      <h2>اتصال به پنل</h2>
+      <p class="hint">اگر این صفحه را با QR پنل باز کرده باشید، اتصال خودکار انجام می‌شود. در غیر این صورت کد ۶ رقمی نمایش‌داده‌شده در پنل را وارد کنید.</p>
+      <div class="row">
+        <input id="pairInput" type="text" inputmode="numeric" placeholder="کد ۶ رقمی" />
+        <button id="btnPair" class="primary">اتصال</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="row">
+        <button id="btnStart" class="primary big">شروع اسکن</button>
+        <button id="btnStop" class="ghost">توقف</button>
+        <button id="btnTorch" class="ghost">چراغ</button>
+      </div>
+      <div id="cameraWrap" class="camera-wrap hidden">
+        <video id="video" muted playsinline></video>
+        <div id="flash" class="camera-flash"></div>
+        <div class="reticle"></div>
+      </div>
+      <p id="cameraHint" class="hint"></p>
+      <div class="row">
+        <input id="manualInput" type="text" placeholder="یا محتوای QR را دستی وارد کنید" />
+        <button id="btnManual" class="ghost">ارسال</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>ارسال‌های اخیر</h2>
+      <ul id="history" class="history"></ul>
+    </section>
+  </main>
+
+  <script src="/vendor/jsQR.js"></script>
+  <script src="/scan-core.js"></script>
+  <script src="/scan-sources.js"></script>
+  <script src="/mobile.js"></script>
+</body>
+</html>

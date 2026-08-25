@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>پنل اوراش</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<div class="shell">
+
+  <!-- ============================ RAIL ============================ -->
+  <aside class="rail">
+    <div class="rail-brand">
+      <span class="brand" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>
+          <rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM19 19h2M17 21h1"/>
+        </svg>
+      </span>
+      <span class="rail-title">اوراش<b>اسکن</b></span>
+    </div>
+
+    <nav class="rail-nav">
+      <button class="tab active" data-tab="good">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/>
+        </svg>
+        <span>کالا و خدمات</span>
+      </button>
+      <button class="tab" data-tab="invoice">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>
+        </svg>
+        <span>فاکتور</span>
+      </button>
+      <button class="tab" data-tab="connect">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/>
+        </svg>
+        <span>اتصال و ورود</span>
+      </button>
+    </nav>
+
+    <!-- live device cluster -->
+    <div class="rail-devices">
+      <p class="rail-label">دستگاه‌ها</p>
+      <div class="dev" id="dev_serial" data-state="off" title="بارکدخوان USB">
+        <span class="dev-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7v10M8 7v10M12 7v10M16 7v10M20 7v10"/></svg>
+        </span>
+        <span class="dev-body"><span class="dev-name">بارکدخوان USB</span><span class="dev-state">متصل نیست</span></span>
+      </div>
+      <div class="dev" id="dev_keyboard" data-state="off" title="بارکدخوان صفحه‌کلیدی">
+        <span class="dev-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg>
+        </span>
+        <span class="dev-body"><span class="dev-name">صفحه‌کلیدی</span><span class="dev-state">خاموش</span></span>
+      </div>
+      <div class="dev" id="dev_camera" data-state="off" title="دوربین">
+        <span class="dev-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        </span>
+        <span class="dev-body"><span class="dev-name">دوربین</span><span class="dev-state">خاموش</span></span>
+      </div>
+      <div class="dev" id="dev_phone" data-state="off" title="گوشی">
+        <span class="dev-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2.5"/><path d="M11 18h2"/></svg>
+        </span>
+        <span class="dev-body"><span class="dev-name">گوشی</span><span class="dev-state">متصل نیست</span></span>
+      </div>
+    </div>
+
+    <div class="rail-foot">
+      <div id="dbBadge" class="db-badge unknown">پایگاه داده: —</div>
+      <span id="mockBadge" class="pill busy hidden">حالت شبیه‌ساز</span>
+      <span id="loginState" class="pill">وارد نشده</span>
+    </div>
+  </aside>
+
+  <!-- ============================ MAIN ============================ -->
+  <main class="content">
+
+    <!-- ===================== TAB: CreateGood ===================== -->
+    <div id="tab-good" class="tabpanel">
+
+      <header class="hero">
+        <div>
+          <p class="eyebrow">ثبت کالا و خدمات</p>
+          <h1>اسکن کن، ثبت شد.</h1>
+          <p class="lede">QR را با بارکدخوان، دوربین یا گوشی بخوان — داده اعتبارسنجی و در اوراش ثبت می‌شود.</p>
+        </div>
+        <div class="stats">
+          <div class="stat">
+            <span class="stat-num" id="scanCount">0</span>
+            <span class="stat-lbl">اسکن</span>
+          </div>
+          <div class="stat good">
+            <span class="stat-num" id="scanOkCount">0</span>
+            <span class="stat-lbl">ثبت شده</span>
+          </div>
+          <div class="stat bad">
+            <span class="stat-num" id="scanBadCount">0</span>
+            <span class="stat-lbl">ناموفق</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- control bar -->
+      <section class="controlbar">
+        <button id="btnAutoSubmit" class="toggle on" type="button" aria-pressed="true">
+          <span class="toggle-dot"></span><span id="autoSubmitLabel">ثبت خودکار: روشن</span>
+        </button>
+        <span id="autoSubmitHint" class="hint"></span>
+        <span class="spacer"></span>
+        <label class="chk"><input type="checkbox" id="scanFillForm" /><span>نوشتن اسکن در فرم</span></label>
+        <label class="chk"><input type="checkbox" id="scanBeep" checked /><span>صدای تأیید</span></label>
+        <span id="scanGate" class="pill">در انتظار ورود</span>
+      </section>
+
+      <!-- ============ bento: scanner sources ============ -->
+      <section class="bento">
+
+        <!-- viewfinder -->
+        <article class="tile tile-view">
+          <div class="tile-head">
+            <h2>دوربین</h2>
+            <span id="st_camera" class="pill">خاموش</span>
+          </div>
+          <div id="cameraWrap" class="camera-wrap hidden">
+            <video id="scanVideo" muted playsinline></video>
+            <div class="reticle"></div>
+            <div id="cameraFlash" class="camera-flash"></div>
+          </div>
+          <div id="cameraIdle" class="viewfinder-idle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M7 12h10"/>
+            </svg>
+            <p>دوربین خاموش است</p>
+          </div>
+          <div class="tile-foot">
+            <button id="btnCameraStart" class="primary">روشن کردن دوربین</button>
+            <button id="btnCameraStop" class="ghost">خاموش</button>
+            <select id="cameraSelect" aria-label="انتخاب دوربین"><option value="">پیش‌فرض</option></select>
+          </div>
+        </article>
+
+        <!-- USB scanner -->
+        <article class="tile">
+          <div class="tile-head">
+            <h2>بارکدخوان USB</h2>
+            <span id="st_serial" class="pill">متصل نیست</span>
+          </div>
+          <p class="hint">دستگاه‌های RS-232/USB-COM مثل Datalogic Gryphon. با Chrome یا Edge روی ویندوز، لینوکس و مک.</p>
+          <div class="tile-foot">
+            <button id="btnSerialConnect" class="primary">اتصال</button>
+            <button id="btnSerialAny" class="ghost">دستگاه دیگر…</button>
+            <button id="btnSerialDisconnect" class="ghost">قطع</button>
+            <select id="serialBaud" aria-label="سرعت">
+              <option value="9600" selected>9600</option>
+              <option value="19200">19200</option>
+              <option value="38400">38400</option>
+              <option value="57600">57600</option>
+              <option value="115200">115200</option>
+            </select>
+          </div>
+        </article>
+
+        <!-- keyboard wedge -->
+        <article class="tile">
+          <div class="tile-head">
+            <h2>بارکدخوان صفحه‌کلیدی</h2>
+            <span id="st_keyboard" class="pill">خاموش</span>
+          </div>
+          <p class="hint">حالت HID: در هر مرورگر و هر سیستم‌عاملی بدون تنظیم کار می‌کند. تایپ عادی شما نادیده گرفته می‌شود.</p>
+          <div class="tile-foot">
+            <label class="chk"><input type="checkbox" id="kbEnabled" /><span>گوش دادن به بارکدخوان</span></label>
+          </div>
+        </article>
+
+        <!-- phone -->
+        <article class="tile tile-phone">
+          <div class="tile-head">
+            <h2>اسکن با گوشی</h2>
+            <span id="st_phone" class="pill">متصل نیست</span>
+          </div>
+          <p class="hint">گوشی روی همین شبکه QR را می‌خواند و برای این پنل می‌فرستد؛ ثبت از روی این کامپیوتر انجام می‌شود.</p>
+          <div id="pairWrap" class="pair hidden">
+            <canvas id="pairQr"></canvas>
+            <div class="pair-info">
+              <a id="pairUrl" class="mono" href="#" target="_blank" rel="noreferrer"></a>
+              <p>کد دستی: <b id="pairCode" class="mono">—</b></p>
+              <p id="pairWarn" class="warn hidden">گواهی HTTPS ساخته نشد؛ مرورگر گوشی روی HTTP اجازه دوربین نمی‌دهد.</p>
+            </div>
+          </div>
+          <div class="tile-foot">
+            <button id="btnPair" class="primary">نمایش QR اتصال</button>
+          </div>
+        </article>
+
+        <!-- manual -->
+        <article class="tile tile-wide">
+          <div class="tile-head">
+            <h2>ورود دستی / ساخت نمونه</h2>
+          </div>
+          <div class="tile-foot">
+            <input id="manualInput" type="text" placeholder='{"code":"71010","name":"کابل","type":1}' />
+            <button id="btnManualScan" class="ghost">پردازش</button>
+            <button id="btnSampleQr" class="ghost">ساخت QR نمونه</button>
+          </div>
+          <div id="sampleWrap" class="pair hidden">
+            <canvas id="sampleQr"></canvas>
+            <div class="pair-info">
+              <p>این QR را اسکن کنید تا کل مسیر آزمایش شود. <span id="sampleHint" class="hint"></span></p>
+              <pre id="sampleJson"></pre>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <div id="scanStatus" class="status hidden"></div>
+
+      <!-- ============ queue ============ -->
+      <section class="queue-section">
+        <div class="section-head">
+          <h2>صف اسکن</h2>
+          <div class="section-actions">
+            <button id="btnScanSendAll" class="primary" disabled>ثبت ردیف‌های در انتظار</button>
+            <button id="btnScanClear" class="ghost">پاک کردن</button>
+          </div>
+        </div>
+        <div id="scanQueueBody" class="queue"></div>
+        <div id="queueEmpty" class="empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3z"/>
+          </svg>
+          <p>هنوز چیزی اسکن نشده است</p>
+          <span>یک QR بخوانید تا اینجا ظاهر شود</span>
+        </div>
+        <details id="scanRawWrap" class="hidden"><summary>داده خام اسکن</summary><pre id="scanRawJson"></pre></details>
+      </section>
+
+      <!-- ============ defaults form ============ -->
+      <section class="panel">
+        <div class="section-head">
+          <h2>مقادیر پیش‌فرض و ثبت دستی</h2>
+          <span class="hint">هر فیلدی که در QR نباشد از اینجا برداشته می‌شود.</span>
+        </div>
+        <div class="grid">
+          <label><span class="lbl-row">نوع <em>الزامی</em></span>
+            <select id="g_type">
+              <option value="1">۱ - کالا</option>
+              <option value="2">۲ - خدمات</option>
+            </select>
+          </label>
+          <label><span class="lbl-row">کد کالا (code) <em>الزامی</em></span>
+            <input id="g_code" type="text" inputmode="numeric" placeholder="عدد، معمولاً ۲۱ رقم" />
+          </label>
+          <label><span class="lbl-row">عنوان کالا (name) <em>الزامی</em></span>
+            <input id="g_name" type="text" placeholder="مثلاً: کابل ۲.۵" />
+          </label>
+          <label><span class="lbl-row">سریال (serial) <em>الزامی</em></span>
+            <input id="g_serial" type="text" placeholder="مثلاً: 123 یا 123-a" />
+          </label>
+          <label><span class="lbl-row">واحد شمارش (unitIdRef) <em>الزامی</em></span>
+            <input id="g_unitIdRef" type="number" placeholder="کد واحد" />
+          </label>
+          <label><span class="lbl-row">نوع بسته‌بندی (unitPackingCodeRef) <em>الزامی</em></span>
+            <input id="g_unitPackingCodeRef" type="number" />
+          </label>
+          <label><span class="lbl-row">گروه اصلی (mainGroupCodeRef) <em>الزامی</em></span>
+            <input id="g_mainGroupCodeRef" type="number" />
+          </label>
+          <label><span class="lbl-row">گروه فرعی (secondGroupCodeRef) <em>الزامی</em></span>
+            <input id="g_secondGroupCodeRef" type="number" />
+          </label>
+        </div>
+        <div class="row">
+          <button id="btnSubmitGood" class="primary" disabled>ثبت کالا (CreateGood)</button>
+          <button id="btnPreviewGood" class="ghost">پیش‌نمایش JSON</button>
+          <button id="btnLoadGoodsRef" class="ghost" disabled>کالاهای موجود</button>
+        </div>
+        <div id="goodStatus" class="status hidden"></div>
+        <details id="goodPreviewWrap" class="hidden"><summary>بدنه درخواست</summary><pre id="goodPreviewJson"></pre></details>
+        <details id="goodsRefWrap" class="hidden"><summary>کالاهای موجود (مرجع)</summary><pre id="goodsRefJson">—</pre></details>
+      </section>
+    </div>
+
+    <!-- ===================== TAB: connection ===================== -->
+    <div id="tab-connect" class="tabpanel hidden">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">اتصال</p>
+          <h1>ورود به سرویس</h1>
+          <p class="lede">آدرس سرویس و پایگاه داده را انتخاب کنید، سپس وارد شوید.</p>
+        </div>
+      </header>
+      <section class="panel">
+        <div class="grid">
+          <label><span class="lbl-row">آدرس سرویس (Base URL)</span>
+            <input id="baseUrl" type="text" value="http://192.168.3.210:5000" />
+          </label>
+          <label><span class="lbl-row">پایگاه داده (uniqueID)</span>
+            <select id="database"><option value="">— در حال بارگذاری —</option></select>
+          </label>
+          <label><span class="lbl-row">نام کاربری</span>
+            <select id="username"><option value="">— ابتدا پایگاه داده را انتخاب کنید —</option></select>
+          </label>
+          <label><span class="lbl-row">کلمه عبور</span>
+            <input id="password" type="password" autocomplete="current-password" />
+          </label>
+        </div>
+        <div class="row">
+          <button id="btnLogin" class="primary">ورود و دریافت توکن</button>
+          <button id="btnReloadDbs" class="ghost">بارگذاری مجدد پایگاه داده‌ها</button>
+        </div>
+        <p id="prodWarn" class="warn hidden">⚠ پایگاه داده تولید (Production) انتخاب شده است. عملیات ثبت روی این پایگاه مسدود است.</p>
+      </section>
+      <details class="panel"><summary>پاسخ خام آخرین درخواست</summary><pre id="rawResponse">—</pre></details>
+    </div>
+
+    <!-- ===================== TAB: CreateInvoice ===================== -->
+    <div id="tab-invoice" class="tabpanel hidden">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">فاکتور</p>
+          <h1>ثبت فاکتور</h1>
+          <p class="lede">داده‌های پایه از سرویس خوانده می‌شوند، سپس سربرگ و ردیف‌ها را کامل کنید.</p>
+        </div>
+      </header>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>داده‌های دریافتی از سرویس</h2>
+          <span id="lookupState" class="pill">در انتظار ورود</span>
+        </div>
+        <div class="grid">
+          <label><span class="lbl-row">کاربر ایجادکننده</span><select id="createuser"><option value="">—</option></select></label>
+          <label><span class="lbl-row">شعبه (departmentCode) <em>الزامی</em></span><select id="departmentCode"><option value="">—</option></select></label>
+          <label><span class="lbl-row">انبار سربرگ (hsc) <em>الزامی</em></span><select id="hsc"><option value="">—</option></select></label>
+          <label><span class="lbl-row">حساب فرستنده (pc) <em>الزامی</em></span><select id="pc"><option value="">—</option></select></label>
+          <label><span class="lbl-row">تفصیلی ۲ (t2)</span><select id="t2"><option value="">— بدون تفصیلی —</option></select></label>
+        </div>
+        <div class="row"><button id="btnLoadLookups" class="primary" disabled>بارگذاری داده‌ها</button></div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head"><h2>سربرگ فاکتور</h2></div>
+        <div class="grid">
+          <label><span class="lbl-row">نوع فاکتور (ft) <em>الزامی</em></span>
+            <select id="ft">
+              <option value="0">۰ - فاکتور فروش</option>
+              <option value="1">۱ - پیش فاکتور</option>
+              <option value="2">۲ - فاکتور خرید</option>
+              <option value="3">۳ - برگشت از فروش</option>
+              <option value="4">۴ - برگشت از خرید</option>
+              <option value="5">۵ - موجودی اول دوره</option>
+              <option value="7">۷ - حواله انبار</option>
+              <option value="8">۸ - برگشت از حواله انبار</option>
+              <option value="11">۱۱ - رسید انبار</option>
+              <option value="12">۱۲ - برگشت از رسید انبار</option>
+              <option value="13">۱۳ - اصلاحیه موجودی</option>
+              <option value="14">۱۴ - سفارش کالا</option>
+              <option value="20">۲۰ - انتقال بین انبار</option>
+            </select>
+          </label>
+          <label><span class="lbl-row">تاریخ سند <em>الزامی</em></span><input id="createdate" type="text" placeholder="1403/09/11" /></label>
+          <label><span class="lbl-row">ساعت سند <em>الزامی</em></span><input id="createtime" type="text" placeholder="10:31" /></label>
+          <label><span class="lbl-row">شماره فاکتور کاربر</span><input id="factNo" type="text" placeholder="اختیاری" /></label>
+          <label><span class="lbl-row">کد ویزیتور</span><input id="visitorId" type="number" placeholder="اختیاری" /></label>
+          <label><span class="lbl-row">توضیحات سربرگ</span><input id="hde" type="text" placeholder="اختیاری" /></label>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head"><h2>ردیف‌های کالا</h2>
+          <div class="section-actions"><button id="btnAddLine" class="ghost">+ افزودن ردیف</button></div>
+        </div>
+        <div class="table-wrap">
+          <table id="linesTable">
+            <thead><tr><th>کالا (gs)</th><th>تعداد (gc)</th><th>نرخ (fp)</th><th>انبار (itms)</th><th>توضیح</th><th></th></tr></thead>
+            <tbody id="linesBody"></tbody>
+          </table>
+        </div>
+        <div class="row">
+          <button id="btnSubmit" class="primary" disabled>ثبت فاکتور (CreateInvoice)</button>
+          <button id="btnPreview" class="ghost">پیش‌نمایش JSON</button>
+        </div>
+        <div id="statusArea" class="status hidden"></div>
+        <details id="previewWrap" class="hidden"><summary>بدنه درخواست</summary><pre id="previewJson"></pre></details>
+      </section>
+    </div>
+  </main>
+</div>
+
+  <script src="/vendor/jsQR.js"></script>
+  <script src="/vendor/qrcode-gen.js"></script>
+  <script src="/scan-core.js"></script>
+  <script src="/scan-sources.js"></script>
+  <script src="/app.js"></script>
+  <script src="/scan-ui.js"></script>
+</body>
+</html>
