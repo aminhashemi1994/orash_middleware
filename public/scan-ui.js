@@ -518,15 +518,22 @@
 
   /**
    * Decide how this machine reads the USB scanner, once, after login.
-   * Server-side first; Web Serial only when the server cannot do it (Windows,
-   * or SERIAL_HOST=0).
+   * Server-side first; Web Serial whenever the server cannot do it (Windows,
+   * SERIAL_HOST=0, or — the common case on a hosted deployment — no scanner on
+   * the server at all).
    */
   async function startScannerSource() {
     const st = await ScanSources.host.probe();
+    // `enabled` only says the server *would* read a device: it is true on any
+    // Linux/macOS host, including one reached over the network with the scanner
+    // plugged into the operator's own machine. Take the host path only when a
+    // device is actually there, or the browser path never runs and the operator
+    // is never asked for the one-time Web Serial permission.
+    const hostHasDevice = !!st && (st.open || st.presence === 'ready');
     // `busy` means the port exists but another program holds it — ModemManager,
     // or a browser tab that already owns it through Web Serial. The server
     // cannot take it, so the browser path is the one that can still work.
-    if (st && st.enabled && !st.busy) { useHostBridge(st); return; }
+    if (st && st.enabled && !st.busy && hostHasDevice) { useHostBridge(st); return; }
 
     if (st && st.busy) {
       log('busy', 'سرور نتوانست بارکدخوان را در اختیار بگیرد',

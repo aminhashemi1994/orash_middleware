@@ -195,6 +195,29 @@ function phoneUrls() {
  * serial-host.js so that module stays about the device and knows nothing about
  * HTTP.
  */
+/**
+ * Is the browser making this request on the same machine as this process?
+ *
+ * Everything lib/serial-check.js and lib/serial-host.js report — /dev nodes,
+ * /sys USB devices, port permissions — describes THIS machine. That is the
+ * operator's machine only when the panel is opened on localhost. Behind nginx
+ * on a public name (qr.tooscore.ir) the scanner is plugged into the operator's
+ * own computer and the server can see nothing, so the panel must fall back to
+ * Web Serial in the browser rather than report "no scanner plugged in".
+ *
+ * nginx always connects from 127.0.0.1, so the socket address alone is not
+ * enough: a forwarded request is remote unless the forwarded chain is loopback
+ * too (which is what a real localhost visit through the proxy looks like).
+ */
+function isLocalClient(req) {
+  const loopback = (ip) => !ip ? false
+    : /^(::1|::ffff:127\.|127\.)/.test(String(ip).trim());
+  if (!loopback(req.socket.remoteAddress)) return false;
+  const fwd = req.headers['x-forwarded-for'];
+  if (!fwd) return true;
+  return String(fwd).split(',').every(loopback);
+}
+
 const hostClients = new Set();
 
 function hostSend(res, event, data) {
@@ -212,12 +235,27 @@ serialHost.on('status', (st) => hostBroadcast('status', st));
 async function handleScanRoute(sub, req, res, url) {
   // GET /scan/serial-check -> why the browser could not open the scanner
   if (sub === 'serial-check' && req.method === 'GET') {
-    return sendJson(res, 200, { ok: true, ...serialCheck.inspect() });
+    const local = isLocalClient(req);
+    // Remote panel: this machine's /dev says nothing about the operator's
+    // scanner. Report it as uninspectable — the same answer Windows gives —
+    // so the panel asks for the one-time Web Serial permission instead.
+    if (!local) {
+      return sendJson(res, 200, {
+        ok: true, local, platform: process.platform, devices: [], usb: [], scanners: [],
+        status: 'unsupported', fix: null,
+        hint: 'پنل از راه دور باز شده است، بنابراین سرور نمی‌تواند بارکدخوان این کامپیوتر را ببیند. یک بار دکمه «اتصال» را بزنید و دستگاه را در پنجره مرورگر تأیید کنید.',
+      });
+    }
+    return sendJson(res, 200, { ok: true, local, ...serialCheck.inspect() });
   }
 
   // GET /scan/host -> is the server reading the scanner, and on which device
   if (sub === 'host' && req.method === 'GET') {
-    return sendJson(res, 200, { ok: true, ...serialHost.status() });
+    const local = isLocalClient(req);
+    // The host reader owns a device on THIS machine; it is only the operator's
+    // scanner when the panel is on localhost.
+    if (!local) return sendJson(res, 200, { ok: true, local, enabled: false, supported: false, open: false });
+    return sendJson(res, 200, { ok: true, local, ...serialHost.status() });
   }
 
   // GET /scan/host/stream -> SSE: scans read from the device on this machine
