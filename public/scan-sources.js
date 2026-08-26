@@ -6,10 +6,15 @@
  * All four sources emit the same event, `scan` with `{ text, source }`, so the
  * rest of the app never cares where a code came from:
  *
+ *   host      The same USB scanner, but read by the panel server and forwarded
+ *            over SSE. Preferred on desktop: it needs no browser permission, so
+ *            it survives a browser restart, which the Web Serial grant does not
+ *            for devices without a USB serial number. Linux/macOS server only.
  *   serial   Web Serial API. Covers the Datalogic Gryphon in "RS-232 emulation"
  *            mode, which enumerates as a CDC device: /dev/ttyACM* on Linux, a
  *            COM port on Windows 10/11, /dev/cu.usbmodem* on macOS. Chrome and
- *            Edge 89+ expose it identically on every desktop OS.
+ *            Edge 89+ expose it identically on every desktop OS. Used when the
+ *            server cannot read the device itself (Windows, SERIAL_HOST=0).
  *   keyboard  Keyboard-wedge (HID) scanners, which "type" the code. Works in
  *            every browser on every OS with no driver and no permission, so it
  *            is the fallback when Web Serial is unavailable (e.g. Firefox).
@@ -385,6 +390,69 @@
     },
   });
 
+  // -------------------------------------------------------------------- host
+
+  /**
+   * The USB scanner as read by the panel *server* (see lib/serial-host.js).
+   *
+   * This is the preferred path on a desktop machine. Chrome only remembers a
+   * Web Serial grant for USB devices that report a serial number, and handheld
+   * scanners usually do not, so the browser path re-prompts on every restart.
+   * When the server owns the device there is nothing to grant: the panel just
+   * listens, and reconnects on its own if the stream drops.
+   */
+  const host = Object.assign(emitter(), {
+    name: 'host',
+    supported: typeof EventSource !== 'undefined',
+    available: false,          // server says it is enabled on this platform
+    open: false,               // server currently has the device
+    info: {},
+    _es: null,
+
+    /** One-shot state read, used before deciding which source to show. */
+    async probe() {
+      try {
+        const res = await fetch('/scan/host');
+        const json = await res.json();
+        if (!json.ok) return null;
+        this.available = !!json.enabled;
+        this.open = !!json.open;
+        this.info = json;
+        return json;
+      } catch { return null; }
+    },
+
+    listen() {
+      if (!this.supported || this._es) return;
+      this._es = new EventSource('/scan/host/stream');
+      const state = (st) => {
+        this.info = st;
+        this.open = !!st.open;
+        this.emit('status', st.open
+          ? { state: 'connected', detail: `${st.label || st.device} @ ${st.baud} baud` }
+          : { state: st.error ? 'error' : 'disconnected', detail: st.error || '' });
+      };
+      this._es.addEventListener('ready', (e) => state(JSON.parse(e.data)));
+      this._es.addEventListener('status', (e) => state(JSON.parse(e.data)));
+      this._es.addEventListener('scan', (e) => {
+        const msg = JSON.parse(e.data);
+        this.emit('scan', { text: msg.text, source: 'host' });
+      });
+      // EventSource retries by itself; say nothing unless it stays down.
+      this._es.onerror = () => { this.open = false; };
+    },
+
+    /** Ask the server to look for the device again. */
+    async retry() {
+      try {
+        const res = await fetch('/scan/host/retry', { method: 'POST' });
+        return await res.json();
+      } catch { return null; }
+    },
+
+    close() { if (this._es) { this._es.close(); this._es = null; } },
+  });
+
   // ------------------------------------------------------------------- phone
 
   /** Receives scans a paired phone pushes through the server relay. */
@@ -445,5 +513,5 @@
     },
   });
 
-  global.ScanSources = { serial, keyboard, camera, phone, GRYPHON_VENDOR_ID, deduper };
+  global.ScanSources = { serial, host, keyboard, camera, phone, GRYPHON_VENDOR_ID, deduper };
 })(typeof window !== 'undefined' ? window : globalThis);

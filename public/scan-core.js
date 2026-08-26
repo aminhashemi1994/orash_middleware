@@ -238,6 +238,39 @@
     return { data, unknown, notes };
   }
 
+  // Bytes 0x80-0x9F, which CP1252 spends on typography instead of controls. A
+  // scanner reporting in that code page turns them into these characters.
+  const CP1252 = '\u20AC\u0081\u201A\u0192\u201E\u2026\u2020\u2021\u02C6\u2030\u0160\u2039\u0152\u008D\u017D\u008F'
+    + '\u0090\u2018\u2019\u201C\u201D\u2022\u2013\u2014\u02DC\u2122\u0161\u203A\u0153\u009D\u017E\u0178';
+
+  /**
+   * Undo the mangling a scanner does when it reports its data in a single-byte
+   * code page: the UTF-8 bytes of «کالا» arrive as `Ú©Ø§Ù„Ø§`. Every character
+   * is then one byte, so putting the bytes back and decoding them as UTF-8
+   * recovers the original — and only that, because a decode of text that was
+   * never mangled either fails or produces no Persian.
+   *
+   * Runs before the control characters are stripped: half of a mangled Persian
+   * letter lands in 0x80-0x9F, and dropping those would make it unrepairable.
+   */
+  function repairMojibake(text) {
+    let bytes;
+    try {
+      bytes = Uint8Array.from(text, (c) => {
+        const cp = c.charCodeAt(0);
+        if (cp <= 0xFF) return cp;
+        const i = CP1252.indexOf(c);
+        if (i === -1) throw new Error('not a single-byte character');   // real Unicode: nothing to repair
+        return 0x80 + i;
+      });
+    } catch { return text; }
+    if (!/[\u00C2-\u00FF\u0152\u0160\u0178\u017D\u0192\u02C6\u02DC\u2013-\u203A\u20AC\u2122]/.test(text)) return text;
+    try {
+      const decoded = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      return /[\u0600-\u06FF]/.test(decoded) ? decoded : text;
+    } catch { return text; }
+  }
+
   /**
    * Parse raw scanner text.
    * @returns {{ok:boolean, kind:string, records:Array, error?:string, raw:string}}
@@ -245,7 +278,7 @@
   function parse(rawText) {
     const raw = String(rawText || '');
     // Scanners append CR/LF and sometimes a prefix character; drop control chars & BOM.
-    const text = raw.replace(/[\u0000-\u001F\u007F-\u009F\uFEFF]/g, '').trim();
+    const text = repairMojibake(raw).replace(/[\u0000-\u001F\u007F-\u009F\uFEFF]/g, '').trim();
     if (!text) return { ok: false, kind: 'empty', records: [], error: 'محتوای اسکن خالی است', raw };
 
     let parsed = tryJson(text);
@@ -300,7 +333,7 @@
 
   const api = {
     parse, canonicalize, withDefaults, validate,
-    normalizeKey, toAsciiDigits,
+    normalizeKey, toAsciiDigits, repairMojibake,
     KNOWN, NUMERIC, BOOLEAN, STRING,
   };
   if (typeof module === 'object' && module.exports) module.exports = api;

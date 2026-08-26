@@ -101,8 +101,14 @@ body::after {
   display: grid;
   grid-template-columns: var(--rail) minmax(0, 1fr);
   min-height: 100vh;
+  /* Nothing in here may widen the page: every column is allowed to shrink. */
+  max-width: 100%;
 }
 
+/* The rail is a fixed frame, not a scrolling column: brand, nav and profile
+   always stay put, and only the device list gives way when the viewport is
+   short. Anything else makes the operator scroll a sidebar to find the tab they
+   were already looking at. */
 .rail {
   position: sticky;
   top: 0;
@@ -110,14 +116,15 @@ body::after {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  gap: 22px;
-  padding: 22px 18px;
+  gap: 16px;
+  padding: 18px 14px;
   background: linear-gradient(180deg, rgba(12,16,32,.82), rgba(8,11,24,.72));
   backdrop-filter: blur(26px) saturate(150%);
   -webkit-backdrop-filter: blur(26px) saturate(150%);
   border-inline-start: 1px solid var(--edge-2);
-  overflow-y: auto;
+  overflow: hidden;
 }
+.rail-brand, .rail-nav, .rail-foot { flex: none; }
 
 .rail-brand { display: flex; align-items: center; gap: 12px; padding: 2px 6px 0; }
 .brand {
@@ -157,12 +164,58 @@ body::after {
 }
 
 .rail-label {
-  margin: 0 0 8px; padding-inline-start: 6px;
+  margin: 0 0 6px; padding-inline-start: 6px;
   font-size: 10.5px; letter-spacing: 1.4px; text-transform: uppercase;
   color: var(--ink-faint);
 }
-.rail-devices { display: grid; gap: 6px; }
-.rail-foot { margin-top: auto; display: grid; gap: 8px; justify-items: start; }
+/* The one part allowed to scroll, and only once it runs out of room. */
+.rail-devices {
+  flex: 0 1 auto;
+  min-height: 0;
+  display: grid; gap: 6px; align-content: start;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--edge) transparent;
+  padding-inline-end: 2px;
+}
+.rail-devices::-webkit-scrollbar { width: 6px; }
+.rail-devices::-webkit-scrollbar-thumb { background: var(--edge); border-radius: 99px; }
+
+.rail-foot { margin-top: auto; display: grid; gap: 8px; justify-items: stretch; }
+
+/* profile button: the session, and the way out of it */
+.profile {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--r-s);
+  border: 1px solid var(--edge-2);
+  background: var(--glass-2);
+  text-align: start;
+  font-family: inherit;
+}
+.profile:hover:not(:disabled) { background: var(--glass-3); transform: none; }
+.profile.active { border-color: rgba(124,92,255,.42); background: linear-gradient(120deg, rgba(124,92,255,.26), rgba(34,211,238,.12)); }
+.profile .avatar {
+  display: grid; place-items: center;
+  width: 30px; height: 30px; flex: none;
+  border-radius: 50%;
+  background: linear-gradient(140deg, var(--a1), var(--a2));
+  color: #fff;
+}
+.profile .avatar svg { width: 16px; height: 16px; }
+.profile-body { min-width: 0; line-height: 1.35; }
+.profile-name {
+  display: block; font-size: 12.5px; font-weight: 500; color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.profile-sub {
+  display: block; font-size: 10.5px; color: var(--ink-faint);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.profile-sub.good { color: var(--good); }
+.profile-sub.bad { color: var(--bad); }
+.profile-sub.busy { color: var(--busy); }
 
 /* device chip */
 .dev {
@@ -202,6 +255,48 @@ body::after {
 .dev[data-state="bad"] .dev-icon { background: var(--bad-bg); color: var(--bad); }
 .dev[data-state="bad"] .dev-state { color: var(--bad); }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ============================== LOGIN GATE ============================== */
+
+/* The gate replaces the whole shell rather than overlaying it: until a token
+   exists there is no rail, no tabs and no scanner to look at behind it. */
+.gate {
+  min-height: 100vh;
+  display: grid; place-items: center;
+  padding: 36px 20px;
+}
+.gate-card {
+  width: 100%; max-width: 620px;
+  padding: 30px 30px 24px;
+}
+.gate-brand { display: flex; align-items: center; gap: 14px; }
+.gate-brand .brand { width: 48px; height: 48px; border-radius: 15px; }
+.gate-brand .brand svg { width: 25px; height: 25px; }
+.gate-brand .eyebrow { margin: 0 0 1px; }
+.gate-brand h1 {
+  margin: 0;
+  font-size: clamp(22px, 3vw, 30px); font-weight: 700; letter-spacing: -.5px;
+}
+.gate-card > .hint { margin: 14px 0 0; }
+/* Two fixed columns, so "database" can take a full row of its own above the
+   credentials instead of the three fields sharing one line. */
+.gate-grid { margin-top: 18px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.gate-grid .span-all { grid-column: 1 / -1; }
+@media (max-width: 560px) {
+  .gate-grid { grid-template-columns: 1fr; }
+}
+.gate .spacer { flex: 1; }
+.gate-foot { margin: 16px 0 0; font-size: 11.5px; color: var(--ink-faint); }
+
+/* key/value read-out for the session panel */
+.kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 0; }
+.kv > div {
+  padding: 11px 14px;
+  border: 1px solid var(--edge-2); border-radius: var(--r-m);
+  background: var(--glass-2);
+}
+.kv dt { font-size: 11.5px; color: var(--ink-faint); }
+.kv dd { margin: 2px 0 0; font-size: 13.5px; color: var(--ink); overflow-wrap: anywhere; }
 
 /* =============================== CONTENT =============================== */
 
@@ -398,6 +493,11 @@ body::after {
 .section-actions { display: flex; gap: 9px; flex-wrap: wrap; }
 
 .queue { display: grid; gap: 8px; }
+
+/* The scanner cards come after the queue and the defaults form: they are
+   plumbing that mostly looks after itself, so they get a heading of their own
+   and the bottom of the page. */
+.sources { display: grid; gap: 12px; }
 
 /* One scan = one card. No table, so nothing can fall out of column. */
 .qrow {
@@ -786,21 +886,51 @@ body.mobile .camera-wrap video { max-height: none; }
   .tile-wide { grid-column: span 2; }
 }
 
+/* A short window (a laptop with the browser bars, or a split screen) must not
+   turn the rail into a scrolling list. Below this height the device chips drop
+   their labels and sit in a row. */
+@media (max-height: 720px) and (min-width: 901px) {
+  .rail { gap: 12px; padding: 14px 12px; }
+  .rail-brand { padding-top: 0; }
+  .rail-devices { grid-template-columns: 1fr 1fr; }
+  .rail-devices .rail-label { grid-column: 1 / -1; margin: 0; }
+  .dev { padding: 7px 8px; gap: 8px; }
+  .dev-icon { width: 26px; height: 26px; border-radius: 8px; }
+  .dev-name { font-size: 11px; }
+  .dev-state { font-size: 10px; }
+  .rail-nav .tab { padding: 9px 12px; }
+}
+
 @media (max-width: 900px) {
   :root { --rail: 0px; }
-  .shell { grid-template-columns: 1fr; }
+  /* minmax(0,…) not 1fr: a grid item's automatic minimum size is its content,
+     which would let the device strip make the whole page scroll sideways. */
+  .shell { grid-template-columns: minmax(0, 1fr); }
   .rail {
-    position: static; height: auto; flex-direction: row; flex-wrap: wrap;
+    position: static; height: auto; min-width: 0;
+    flex-direction: row; flex-wrap: wrap;
     align-items: center; gap: 12px; padding: 12px 14px;
     border-inline-start: none; border-bottom: 1px solid var(--edge-2);
+    overflow: hidden;
   }
-  .rail-nav { grid-auto-flow: column; gap: 6px; }
+  /* Three rows: brand + nav, then the device strip, then the session row.
+     min-width:0 on the scrolling strip matters — without it the chips set a
+     min-content width on the whole grid and the page scrolls sideways. */
+  .rail-brand { flex: 0 0 auto; }
+  .rail-nav { flex: 1 1 auto; min-width: 0; grid-auto-flow: column; justify-content: start; gap: 6px; }
   .rail-nav .tab span { display: none; }
   .rail-nav .tab { padding: 10px 14px; }
-  .rail-devices { display: flex; gap: 6px; overflow-x: auto; flex: 1 0 100%; }
+  .rail-devices {
+    display: flex; gap: 6px; overflow-x: auto; flex: 1 0 100%;
+    min-width: 0; grid-template-columns: none;
+  }
   .rail-devices .rail-label { display: none; }
   .dev { flex: none; }
-  .rail-foot { margin: 0; flex-direction: row; display: flex; gap: 8px; flex-wrap: wrap; }
+  .rail-foot {
+    margin: 0; flex: 1 0 100%; min-width: 0;
+    flex-direction: row; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  }
+  .profile { width: auto; flex: 0 1 auto; }
   .content { padding: 20px 14px 60px; }
   .bento { grid-template-columns: 1fr; }
   .tile-view, .tile-wide, .tile-phone { grid-column: auto; }

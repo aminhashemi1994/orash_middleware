@@ -175,6 +175,35 @@ if [[ $WITH_NGINX -eq 1 ]]; then
       ok "certificate present"
     fi
 
+    # A certificate that quietly stops renewing is the usual way this site goes
+    # down, and it takes the Excel macro's HTTPS call with it. Say when it
+    # expires, make sure something is scheduled to renew it, and make sure nginx
+    # is told to pick the new one up — certbot writes the file, but nginx serves
+    # what it has in memory until it is reloaded.
+    if [[ -s "$CERT_DIR/fullchain.pem" ]]; then
+      END="$($SUDO openssl x509 -enddate -noout -in "$CERT_DIR/fullchain.pem" 2>/dev/null | cut -d= -f2 || true)"
+      [[ -n "$END" ]] && ok "certificate valid until $END"
+
+      if systemctl list-timers --all 2>/dev/null | grep -qE 'certbot'; then
+        ok "renewal timer is active"
+      elif [[ -f /etc/cron.d/certbot ]]; then
+        ok "renewal cron present (/etc/cron.d/certbot)"
+      else
+        warn "nothing is scheduled to renew the certificate. enable it with:"
+        warn "  sudo systemctl enable --now certbot.timer"
+      fi
+
+      HOOK="/etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh"
+      if [[ ! -x "$HOOK" ]]; then
+        $SUDO mkdir -p "$(dirname "$HOOK")"
+        printf '#!/bin/sh\nsystemctl reload nginx\n' | $SUDO tee "$HOOK" >/dev/null
+        $SUDO chmod +x "$HOOK"
+        ok "installed renewal hook: reload nginx after every renewal"
+      else
+        ok "renewal hook present"
+      fi
+    fi
+
     if $SUDO nginx -t >/dev/null 2>&1; then
       $SUDO systemctl reload nginx && ok "nginx reloaded"
     else

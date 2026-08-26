@@ -7,7 +7,58 @@
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-<div class="shell">
+
+<!-- ============================ LOGIN GATE ============================ -->
+<!-- Nothing else is reachable until the service returns a token: the panel owns
+     the session for every scanner and for the paired phones, so it must have one
+     before any of that is shown. -->
+<div class="gate" id="loginView">
+  <section class="gate-card panel">
+    <div class="gate-brand">
+      <span class="brand" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>
+          <rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM19 19h2M17 21h1"/>
+        </svg>
+      </span>
+      <div>
+        <p class="eyebrow">اوراش اسکن</p>
+        <h1>ورود به سامانه</h1>
+      </div>
+    </div>
+    <p class="hint">پایگاه داده را انتخاب کنید و با حساب اوراش خود وارد شوید. پس از ورود، داشبورد اسکن و ثبت باز می‌شود.</p>
+
+    <!-- The service address is deployment configuration, not something an
+         operator should retype at every login: it comes from ORASH_BASE_URL in
+         .env and is never shown here.
+         The database comes first and full width because the user list depends on
+         it — picking it is what fills the two fields underneath. -->
+    <div class="grid gate-grid">
+      <label class="span-all"><span class="lbl-row">انتخاب پایگاه داده</span>
+        <select id="database"><option value="">— در حال بارگذاری —</option></select>
+      </label>
+      <label><span class="lbl-row">نام کاربری</span>
+        <select id="username"><option value="">— ابتدا پایگاه داده را انتخاب کنید —</option></select>
+      </label>
+      <label><span class="lbl-row">کلمه عبور</span>
+        <input id="password" type="password" autocomplete="current-password" />
+      </label>
+    </div>
+
+    <div class="row">
+      <button id="btnLogin" class="primary big">ورود</button>
+      <button id="btnReloadDbs" class="ghost">بارگذاری مجدد پایگاه داده‌ها</button>
+      <span class="spacer"></span>
+      <span id="gateState" class="pill">در حال آماده‌سازی…</span>
+    </div>
+
+    <p id="prodWarn" class="warn hidden">⚠ پایگاه داده تولید (Production) انتخاب شده است. عملیات ثبت روی این پایگاه مسدود است.</p>
+    <div id="loginStatus" class="status hidden"></div>
+    <p class="gate-foot">اتصال به بارکدخوان و دوربین پس از ورود انجام می‌شود.</p>
+  </section>
+</div>
+
+<div class="shell hidden" id="appShell">
 
   <!-- ============================ RAIL ============================ -->
   <aside class="rail">
@@ -33,12 +84,6 @@
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>
         </svg>
         <span>فاکتور</span>
-      </button>
-      <button class="tab" data-tab="connect">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/>
-        </svg>
-        <span>اتصال و ورود</span>
       </button>
     </nav>
 
@@ -74,7 +119,18 @@
     <div class="rail-foot">
       <div id="dbBadge" class="db-badge unknown">پایگاه داده: —</div>
       <span id="mockBadge" class="pill busy hidden">حالت شبیه‌ساز</span>
-      <span id="loginState" class="pill">وارد نشده</span>
+      <!-- The session lives in the profile: who is logged in, and the way out. -->
+      <button class="profile" id="btnProfile" type="button" title="پروفایل و نشست">
+        <span class="avatar" id="profileInitial" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+          </svg>
+        </span>
+        <span class="profile-body">
+          <span class="profile-name" id="profileName">وارد نشده</span>
+          <span class="profile-sub" id="loginState">پروفایل</span>
+        </span>
+      </button>
     </div>
   </aside>
 
@@ -108,114 +164,14 @@
 
       <!-- control bar -->
       <section class="controlbar">
-        <button id="btnAutoSubmit" class="toggle on" type="button" aria-pressed="true">
-          <span class="toggle-dot"></span><span id="autoSubmitLabel">ثبت خودکار: روشن</span>
+        <button id="btnAutoSubmit" class="toggle" type="button" aria-pressed="false">
+          <span class="toggle-dot"></span><span id="autoSubmitLabel">ثبت خودکار: خاموش</span>
         </button>
         <span id="autoSubmitHint" class="hint"></span>
         <span class="spacer"></span>
-        <label class="chk"><input type="checkbox" id="scanFillForm" /><span>نوشتن اسکن در فرم</span></label>
+        <label class="chk"><input type="checkbox" id="scanFillForm" checked /><span>نوشتن اسکن در فرم</span></label>
         <label class="chk"><input type="checkbox" id="scanBeep" checked /><span>صدای تأیید</span></label>
         <span id="scanGate" class="pill">در انتظار ورود</span>
-      </section>
-
-      <!-- ============ bento: scanner sources ============ -->
-      <section class="bento">
-
-        <!-- viewfinder -->
-        <article class="tile tile-view">
-          <div class="tile-head">
-            <h2>دوربین</h2>
-            <span id="st_camera" class="pill">خاموش</span>
-          </div>
-          <div id="cameraWrap" class="camera-wrap hidden">
-            <video id="scanVideo" muted playsinline></video>
-            <div class="reticle"></div>
-            <div id="cameraFlash" class="camera-flash"></div>
-          </div>
-          <div id="cameraIdle" class="viewfinder-idle">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M7 12h10"/>
-            </svg>
-            <p>دوربین خاموش است</p>
-          </div>
-          <div class="tile-foot">
-            <button id="btnCameraStart" class="primary">روشن کردن دوربین</button>
-            <button id="btnCameraStop" class="ghost">خاموش</button>
-            <select id="cameraSelect" aria-label="انتخاب دوربین"><option value="">پیش‌فرض</option></select>
-          </div>
-        </article>
-
-        <!-- USB scanner -->
-        <article class="tile">
-          <div class="tile-head">
-            <h2>بارکدخوان USB</h2>
-            <span id="st_serial" class="pill">متصل نیست</span>
-          </div>
-          <p class="hint">دستگاه‌های RS-232/USB-COM مثل Datalogic Gryphon. با Chrome یا Edge روی ویندوز، لینوکس و مک.</p>
-          <div class="tile-foot">
-            <button id="btnSerialConnect" class="primary">اتصال</button>
-            <button id="btnSerialAny" class="ghost">دستگاه دیگر…</button>
-            <button id="btnSerialDisconnect" class="ghost">قطع</button>
-            <select id="serialBaud" aria-label="سرعت">
-              <option value="9600" selected>9600</option>
-              <option value="19200">19200</option>
-              <option value="38400">38400</option>
-              <option value="57600">57600</option>
-              <option value="115200">115200</option>
-            </select>
-          </div>
-        </article>
-
-        <!-- keyboard wedge -->
-        <article class="tile">
-          <div class="tile-head">
-            <h2>بارکدخوان صفحه‌کلیدی</h2>
-            <span id="st_keyboard" class="pill">خاموش</span>
-          </div>
-          <p class="hint">حالت HID: در هر مرورگر و هر سیستم‌عاملی بدون تنظیم کار می‌کند. تایپ عادی شما نادیده گرفته می‌شود.</p>
-          <div class="tile-foot">
-            <label class="chk"><input type="checkbox" id="kbEnabled" /><span>گوش دادن به بارکدخوان</span></label>
-          </div>
-        </article>
-
-        <!-- phone -->
-        <article class="tile tile-phone">
-          <div class="tile-head">
-            <h2>اسکن با گوشی</h2>
-            <span id="st_phone" class="pill">متصل نیست</span>
-          </div>
-          <p class="hint">گوشی روی همین شبکه QR را می‌خواند و برای این پنل می‌فرستد؛ ثبت از روی این کامپیوتر انجام می‌شود.</p>
-          <div id="pairWrap" class="pair hidden">
-            <canvas id="pairQr"></canvas>
-            <div class="pair-info">
-              <a id="pairUrl" class="mono" href="#" target="_blank" rel="noreferrer"></a>
-              <p>کد دستی: <b id="pairCode" class="mono">—</b></p>
-              <p id="pairWarn" class="warn hidden">گواهی HTTPS ساخته نشد؛ مرورگر گوشی روی HTTP اجازه دوربین نمی‌دهد.</p>
-            </div>
-          </div>
-          <div class="tile-foot">
-            <button id="btnPair" class="primary">نمایش QR اتصال</button>
-          </div>
-        </article>
-
-        <!-- manual -->
-        <article class="tile tile-wide">
-          <div class="tile-head">
-            <h2>ورود دستی / ساخت نمونه</h2>
-          </div>
-          <div class="tile-foot">
-            <input id="manualInput" type="text" placeholder='{"code":"71010","name":"کابل","type":1}' />
-            <button id="btnManualScan" class="ghost">پردازش</button>
-            <button id="btnSampleQr" class="ghost">ساخت QR نمونه</button>
-          </div>
-          <div id="sampleWrap" class="pair hidden">
-            <canvas id="sampleQr"></canvas>
-            <div class="pair-info">
-              <p>این QR را اسکن کنید تا کل مسیر آزمایش شود. <span id="sampleHint" class="hint"></span></p>
-              <pre id="sampleJson"></pre>
-            </div>
-          </div>
-        </article>
       </section>
 
       <div id="scanStatus" class="status hidden"></div>
@@ -284,37 +240,142 @@
         <details id="goodPreviewWrap" class="hidden"><summary>بدنه درخواست</summary><pre id="goodPreviewJson"></pre></details>
         <details id="goodsRefWrap" class="hidden"><summary>کالاهای موجود (مرجع)</summary><pre id="goodsRefJson">—</pre></details>
       </section>
+      <!-- ============ scan sources ============ -->
+      <section class="sources">
+        <div class="section-head">
+          <h2>دستگاه‌های اسکن</h2>
+          <span class="hint">بارکدخوان USB خودکار وصل می‌شود؛ دوربین و گوشی در صورت نیاز.</span>
+        </div>
+        <section class="bento">
+
+        <!-- viewfinder -->
+        <article class="tile tile-view">
+          <div class="tile-head">
+            <h2>دوربین</h2>
+            <span id="st_camera" class="pill">خاموش</span>
+          </div>
+          <div id="cameraWrap" class="camera-wrap hidden">
+            <video id="scanVideo" muted playsinline></video>
+            <div class="reticle"></div>
+            <div id="cameraFlash" class="camera-flash"></div>
+          </div>
+          <div id="cameraIdle" class="viewfinder-idle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M7 12h10"/>
+            </svg>
+            <p>دوربین خاموش است</p>
+          </div>
+          <div class="tile-foot">
+            <button id="btnCameraStart" class="primary">روشن کردن دوربین</button>
+            <button id="btnCameraStop" class="ghost">خاموش</button>
+            <select id="cameraSelect" aria-label="انتخاب دوربین"><option value="">پیش‌فرض</option></select>
+          </div>
+        </article>
+
+        <!-- USB scanner -->
+        <article class="tile" id="tile_serial">
+          <div class="tile-head">
+            <h2>بارکدخوان USB</h2>
+            <span id="st_serial" class="pill">در حال بررسی…</span>
+          </div>
+          <p class="hint">دستگاه‌های RS-232/USB-COM مثل Datalogic Gryphon. اتصال به‌صورت خودکار انجام می‌شود.</p>
+          <p id="serialNotice" class="hint hidden"></p>
+          <!-- Shown when the server reads the device itself: no browser
+               permission is involved, so there is nothing to connect. -->
+          <div class="tile-foot hidden" id="serialHostFoot">
+            <button id="btnSerialRetry" class="ghost">جست‌وجوی دوباره دستگاه</button>
+          </div>
+          <div class="tile-foot" id="serialBrowserFoot">
+            <button id="btnSerialConnect" class="primary">اتصال</button>
+            <button id="btnSerialAny" class="ghost">دستگاه دیگر…</button>
+            <button id="btnSerialDisconnect" class="ghost">قطع</button>
+            <select id="serialBaud" aria-label="سرعت">
+              <option value="9600" selected>9600</option>
+              <option value="19200">19200</option>
+              <option value="38400">38400</option>
+              <option value="57600">57600</option>
+              <option value="115200">115200</option>
+            </select>
+          </div>
+        </article>
+
+        <!-- keyboard wedge -->
+        <article class="tile">
+          <div class="tile-head">
+            <h2>بارکدخوان صفحه‌کلیدی</h2>
+            <span id="st_keyboard" class="pill">خاموش</span>
+          </div>
+          <p class="hint">حالت HID: در هر مرورگر و هر سیستم‌عاملی بدون تنظیم کار می‌کند. تایپ عادی شما نادیده گرفته می‌شود.</p>
+          <div class="tile-foot">
+            <label class="chk"><input type="checkbox" id="kbEnabled" /><span>گوش دادن به بارکدخوان</span></label>
+          </div>
+        </article>
+
+        <!-- phone -->
+        <article class="tile tile-phone">
+          <div class="tile-head">
+            <h2>اسکن با گوشی</h2>
+            <span id="st_phone" class="pill">متصل نیست</span>
+          </div>
+          <p class="hint">گوشی روی همین شبکه QR را می‌خواند و برای این پنل می‌فرستد؛ ثبت از روی این کامپیوتر انجام می‌شود.</p>
+          <div id="pairWrap" class="pair hidden">
+            <canvas id="pairQr"></canvas>
+            <div class="pair-info">
+              <a id="pairUrl" class="mono" href="#" target="_blank" rel="noreferrer"></a>
+              <p>کد دستی: <b id="pairCode" class="mono">—</b></p>
+              <p id="pairWarn" class="warn hidden">گواهی HTTPS ساخته نشد؛ مرورگر گوشی روی HTTP اجازه دوربین نمی‌دهد.</p>
+            </div>
+          </div>
+          <div class="tile-foot">
+            <button id="btnPair" class="primary">نمایش QR اتصال</button>
+          </div>
+        </article>
+
+        <!-- manual -->
+        <article class="tile tile-wide">
+          <div class="tile-head">
+            <h2>ورود دستی / ساخت نمونه</h2>
+          </div>
+          <div class="tile-foot">
+            <input id="manualInput" type="text" placeholder='{"code":"71010","name":"کابل","type":1}' />
+            <button id="btnManualScan" class="ghost">پردازش</button>
+            <button id="btnSampleQr" class="ghost">ساخت QR نمونه</button>
+          </div>
+          <div id="sampleWrap" class="pair hidden">
+            <canvas id="sampleQr"></canvas>
+            <div class="pair-info">
+              <p>این QR را اسکن کنید تا کل مسیر آزمایش شود. <span id="sampleHint" class="hint"></span></p>
+              <pre id="sampleJson"></pre>
+            </div>
+          </div>
+        </article>
+        </section>
+      </section>
     </div>
 
-    <!-- ===================== TAB: connection ===================== -->
-    <div id="tab-connect" class="tabpanel hidden">
+    <!-- ===================== TAB: profile ===================== -->
+    <div id="tab-profile" class="tabpanel hidden">
       <header class="hero">
         <div>
-          <p class="eyebrow">اتصال</p>
-          <h1>ورود به سرویس</h1>
-          <p class="lede">آدرس سرویس و پایگاه داده را انتخاب کنید، سپس وارد شوید.</p>
+          <p class="eyebrow">پروفایل</p>
+          <h1>حساب و نشست</h1>
+          <p class="lede">این پنل با همین حساب برای همه اسکن‌ها و گوشی‌های متصل ثبت انجام می‌دهد.</p>
         </div>
       </header>
       <section class="panel">
-        <div class="grid">
-          <label><span class="lbl-row">آدرس سرویس (Base URL)</span>
-            <input id="baseUrl" type="text" value="http://192.168.3.210:5000" />
-          </label>
-          <label><span class="lbl-row">پایگاه داده (uniqueID)</span>
-            <select id="database"><option value="">— در حال بارگذاری —</option></select>
-          </label>
-          <label><span class="lbl-row">نام کاربری</span>
-            <select id="username"><option value="">— ابتدا پایگاه داده را انتخاب کنید —</option></select>
-          </label>
-          <label><span class="lbl-row">کلمه عبور</span>
-            <input id="password" type="password" autocomplete="current-password" />
-          </label>
+        <div class="section-head">
+          <h2>مشخصات نشست</h2>
+          <span id="sessionState" class="pill">—</span>
         </div>
+        <dl class="kv">
+          <div><dt>کاربر</dt><dd id="s_user">—</dd></div>
+          <div><dt>پایگاه داده</dt><dd id="s_database">—</dd></div>
+          <div><dt>وضعیت ثبت</dt><dd id="s_write">—</dd></div>
+        </dl>
         <div class="row">
-          <button id="btnLogin" class="primary">ورود و دریافت توکن</button>
-          <button id="btnReloadDbs" class="ghost">بارگذاری مجدد پایگاه داده‌ها</button>
+          <button id="btnLogout" class="ghost">خروج از حساب</button>
+          <span class="hint">با خروج، توکن پاک می‌شود و تا ورود بعدی هیچ اسکنی ثبت نمی‌شود.</span>
         </div>
-        <p id="prodWarn" class="warn hidden">⚠ پایگاه داده تولید (Production) انتخاب شده است. عملیات ثبت روی این پایگاه مسدود است.</p>
       </section>
       <details class="panel"><summary>پاسخ خام آخرین درخواست</summary><pre id="rawResponse">—</pre></details>
     </div>

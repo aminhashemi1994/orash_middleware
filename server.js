@@ -23,6 +23,9 @@
  *  TLS_KEY / TLS_CERT use your own certificate instead of the generated one
  *  MOCK=1             answer from the built-in simulator instead of the real service
  *  ALLOW_PROD_WRITE=1 permit writes against the production database
+ *  SERIAL_HOST=0      do not read the USB scanner here; use the browser instead
+ *  SERIAL_DEVICE      pin the scanner's device node (default: auto-detect)
+ *  SERIAL_BAUD=9600   scanner line speed
  */
 
 const http = require('http');
@@ -39,6 +42,8 @@ const relay = require('./lib/scan-relay');
 const { ensureCert, lanIPv4 } = require('./lib/self-signed');
 const { mockForward } = require('./lib/mock-upstream');
 const serialCheck = require('./lib/serial-check');
+const serialHost = require('./lib/serial-host');
+const labelQr = require('./lib/label-qr');
 
 const PORT = Number(process.env.PORT || 4173);
 // 0.0.0.0 for a LAN machine; behind a reverse proxy set HOST=127.0.0.1 so the
@@ -185,10 +190,60 @@ function phoneUrls() {
   return urls;
 }
 
+/**
+ * Panels listening to the host-side scanner. Kept here rather than in
+ * serial-host.js so that module stays about the device and knows nothing about
+ * HTTP.
+ */
+const hostClients = new Set();
+
+function hostSend(res, event, data) {
+  try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); }
+  catch { /* client vanished; its close handler removes it */ }
+}
+
+function hostBroadcast(event, data) {
+  for (const res of hostClients) hostSend(res, event, data);
+}
+
+serialHost.on('scan', (msg) => hostBroadcast('scan', msg));
+serialHost.on('status', (st) => hostBroadcast('status', st));
+
 async function handleScanRoute(sub, req, res, url) {
   // GET /scan/serial-check -> why the browser could not open the scanner
   if (sub === 'serial-check' && req.method === 'GET') {
     return sendJson(res, 200, { ok: true, ...serialCheck.inspect() });
+  }
+
+  // GET /scan/host -> is the server reading the scanner, and on which device
+  if (sub === 'host' && req.method === 'GET') {
+    return sendJson(res, 200, { ok: true, ...serialHost.status() });
+  }
+
+  // GET /scan/host/stream -> SSE: scans read from the device on this machine
+  if (sub === 'host/stream' && req.method === 'GET') {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    res.write('retry: 2000\n\n');
+    hostClients.add(res);
+    hostSend(res, 'ready', serialHost.status());
+
+    const beat = setInterval(() => { try { res.write(': ping\n\n'); } catch { /* noop */ } }, 25000);
+    const drop = () => { clearInterval(beat); hostClients.delete(res); };
+    req.on('close', drop);
+    req.on('error', drop);
+    res.on('error', drop);
+    return;
+  }
+
+  // POST /scan/host/retry -> look for the device again without waiting for the poll
+  if (sub === 'host/retry' && req.method === 'POST') {
+    serialHost.retry();
+    return sendJson(res, 200, { ok: true, ...serialHost.status() });
   }
 
   // POST /scan/session -> the panel claims a pairing session
@@ -292,6 +347,44 @@ async function handleRequest(req, res) {
       }
     }
 
+    // GET /label/qr.png?code=&serial=&name=  -> the label QR, for Excel to place
+    // on the sheet. Also .svg for anything that prefers vectors, and .json to
+    // see exactly what is being encoded. Excel sends three fields; lib/label-qr
+    // supplies the rest and does the encoding.
+    if (url.pathname.startsWith('/label/qr.')) {
+      const format = url.pathname.slice('/label/qr.'.length);
+      const q = url.searchParams;
+      let label;
+      try {
+        label = labelQr.buildLabel({ code: q.get('code'), serial: q.get('serial'), name: q.get('name') });
+      } catch (err) {
+        // Plain text, not JSON: VBA reads the body straight into a MsgBox.
+        res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+        return res.end(`این فیلدها خالی هستند: ${(err.missing || []).join('، ')}`);
+      }
+      const text = JSON.stringify(label);
+      console.log(`[label] ${format} code=${label.code} serial=${label.serial} name=${label.name.slice(0, 40)}`);
+
+      if (format === 'json') return sendJson(res, 200, { ok: true, text, data: label });
+      if (format === 'svg') {
+        res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'no-store' });
+        return res.end(labelQr.qrSvg(text).svg);
+      }
+      if (format === 'png') {
+        // 10 device pixels per module keeps it crisp when printed small; a
+        // caller printing larger can ask for more.
+        const scale = Math.min(20, Math.max(2, Number(url.searchParams.get('scale')) || 10));
+        const { png } = labelQr.qrPng(text, scale);
+        res.writeHead(200, {
+          'Content-Type': 'image/png',
+          'Content-Length': png.length,
+          'Cache-Control': 'no-store',      // the sheet changes between two calls a second apart
+        });
+        return res.end(png);
+      }
+      return sendJson(res, 404, { ok: false, error: 'use /label/qr.png, .svg or .json' });
+    }
+
     if (url.pathname === '/config') {
       return sendJson(res, 200, {
         defaults: { baseUrl: ORASH_BASE_URL },
@@ -300,6 +393,7 @@ async function handleRequest(req, res) {
         mock: MOCK,
         https: { enabled: tlsReady, port: HTTPS_PORT },
         phoneUrls: phoneUrls(),
+        hostScanner: { enabled: serialHost.enabled, supported: serialHost.supported },
       });
     }
 
@@ -357,6 +451,19 @@ if (tlsReady) {
 } else if (ENABLE_HTTPS) {
   console.log('[tls] no certificate (openssl not found?) — phone camera scanning needs HTTPS.');
   console.log('      Install openssl, or set TLS_KEY/TLS_CERT, or run the phone page on a trusted origin.');
+}
+
+// Own the scanner here so the browser never has to ask for the port. Starts
+// looking immediately and keeps looking, so plugging it in later is enough.
+serialHost.start();
+if (serialHost.enabled) {
+  const st = serialHost.status();
+  // The first attach happens a tick later, and logs itself ("[serial] ...").
+  console.log(`Scanner (host)      ${st.open ? `${st.device} @ ${st.baud} baud` : 'watching for a USB scanner'}`);
+} else if (!serialHost.supported) {
+  console.log('Scanner (host)      not supported on this platform — the panel will use Web Serial');
+} else {
+  console.log('Scanner (host)      disabled (SERIAL_HOST=0) — the panel will use Web Serial');
 }
 
 if (envFile.file) console.log(`Config              ${envFile.file}  (${envFile.loaded.length} vars)`);

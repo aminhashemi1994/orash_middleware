@@ -37,13 +37,21 @@ cat > "$RULE_FILE" <<'RULES'
 # TAG+="uaccess" gives the active desktop session an ACL on the device, which is
 # what Chrome's Web Serial API needs.
 
+#
+# ID_MM_DEVICE_IGNORE keeps ModemManager off the port. It probes every CDC-ACM
+# device it sees on plug, and while it holds the port nothing else can open it:
+# the panel server gets "Device or resource busy" and Chrome gets its unhelpful
+# "Failed to open serial port".
+
 # Datalogic / PSC Scanning (Gryphon and friends)
-SUBSYSTEM=="tty", ATTRS{idVendor}=="05f9", MODE="0660", GROUP="uucp", TAG+="uaccess"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="05f9", MODE="0660", GROUP="uucp", TAG+="uaccess", ENV{ID_MM_DEVICE_IGNORE}="1"
 
 # Common alternatives, harmless if you do not own one:
-SUBSYSTEM=="tty", ATTRS{idVendor}=="0c2e", MODE="0660", GROUP="uucp", TAG+="uaccess"  # Honeywell/Metrologic
-SUBSYSTEM=="tty", ATTRS{idVendor}=="1eab", MODE="0660", GROUP="uucp", TAG+="uaccess"  # Newland
-SUBSYSTEM=="tty", ATTRS{idVendor}=="23d0", MODE="0660", GROUP="uucp", TAG+="uaccess"  # Zebra/Symbol
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0c2e", MODE="0660", GROUP="uucp", TAG+="uaccess", ENV{ID_MM_DEVICE_IGNORE}="1"  # Honeywell/Metrologic
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1eab", MODE="0660", GROUP="uucp", TAG+="uaccess", ENV{ID_MM_DEVICE_IGNORE}="1"  # Newland
+SUBSYSTEM=="tty", ATTRS{idVendor}=="23d0", MODE="0660", GROUP="uucp", TAG+="uaccess", ENV{ID_MM_DEVICE_IGNORE}="1"  # Zebra/Symbol
+SUBSYSTEM=="tty", ATTRS{idVendor}=="05e0", MODE="0660", GROUP="uucp", TAG+="uaccess", ENV{ID_MM_DEVICE_IGNORE}="1"  # Symbol/Zebra
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0536", MODE="0660", GROUP="uucp", TAG+="uaccess", ENV{ID_MM_DEVICE_IGNORE}="1"  # Honeywell HHP
 RULES
 echo
 echo "wrote $RULE_FILE"
@@ -78,5 +86,19 @@ for dev in /dev/ttyACM* /dev/ttyUSB*; do
     echo "         back in — the $TARGET_USER group membership needs a fresh session."
   fi
 done
+# ModemManager only re-reads the ignore property when the device is re-added, and
+# it keeps any port it already grabbed. Say so plainly rather than leaving the
+# operator with a port that is readable but still "busy".
+if systemctl is-active --quiet ModemManager 2>/dev/null; then
+  echo
+  echo "== ModemManager =="
+  echo "  It is running. The rule above tells it to ignore these scanners, but a"
+  echo "  port it already holds stays held until the device is re-added:"
+  echo "      unplug and replug the scanner   (enough in almost every case)"
+  echo "  If a port keeps coming back busy, and you have no cellular modem:"
+  echo "      sudo systemctl disable --now ModemManager"
+fi
+
 echo
-echo "Then reload the panel and press «اتصال به بارکدخوان»."
+echo "Then restart the panel (npm start). It takes the scanner by itself —"
+echo "no browser permission, no click."

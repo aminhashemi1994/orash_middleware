@@ -14,6 +14,20 @@ function setPill(el, text, kind) {
   el.className = 'pill ' + (kind || '');
 }
 
+/**
+ * The login state is shown in two places: as a pill on the gate, and as the
+ * sub-line of the profile button in the rail. Same text, different chrome.
+ */
+function setLoginState(text, kind) {
+  const gate = $('gateState');
+  if (gate) setPill(gate, text, kind);
+  const sub = $('loginState');
+  if (sub) {
+    sub.textContent = text;
+    sub.className = 'profile-sub ' + (kind || '');
+  }
+}
+
 // ---------- busy affordances ----------
 
 /** Shimmer placeholder on a control whose options are still being fetched. */
@@ -52,7 +66,10 @@ async function callProxy(name, { method = 'POST', query = null, body = null } = 
   return { httpStatus: res.status, ...json };
 }
 
-function baseUrl() { return $('baseUrl').value.trim(); }
+// Deployment configuration, not a form field: the server reads ORASH_BASE_URL
+// from .env and hands it to the panel through /config. Nothing in the UI asks
+// for it or shows it.
+function baseUrl() { return state.config?.defaults?.baseUrl || ''; }
 function uniqueID() { return $('database').value; }
 
 // Extract an array of rows from the various Orash "content" shapes.
@@ -97,9 +114,6 @@ function fillSelect(sel, rows, valueKeys, labelKeys, { keepFirst = true, placeho
 async function loadConfig() {
   const res = await fetch('/config');
   state.config = await res.json();
-  if (state.config.defaults?.baseUrl && !$('baseUrl').value) {
-    $('baseUrl').value = state.config.defaults.baseUrl;
-  }
   if (state.config.mock) $('mockBadge').classList.remove('hidden');
 }
 
@@ -130,16 +144,25 @@ function markDatabaseBadge() {
 }
 
 async function loadDatabases() {
-  setPill($('loginState'), 'در حال خواندن پایگاه داده‌ها…', 'busy');
+  setLoginState('در حال خواندن پایگاه داده‌ها…', 'busy');
   skeleton(true, 'database', 'username');
   const r = await callProxy('databases', { method: 'GET', query: { baseUrl: baseUrl() } });
   skeleton(false, 'database');
   if (!r.ok) {
+    // Nothing can be selected, let alone logged into, while the service is
+    // unreachable — so say so on the gate instead of leaving empty dropdowns.
     skeleton(false, 'username');
-    setPill($('loginState'), 'خطا در اتصال', 'bad');
+    setLoginState('سامانه در دسترس نیست', 'bad');
     showRaw(r);
+    $('database').innerHTML = '<option value="">— در دسترس نیست —</option>';
+    $('username').innerHTML = '<option value="">— در دسترس نیست —</option>';
+    $('btnLogin').disabled = true;
+    reportUnreachable(r);
+    markDatabaseBadge();
     return;
   }
+  $('btnLogin').disabled = false;
+  $('loginStatus').classList.add('hidden');
   const rows = rowsFrom(r.data);
   const sel = $('database');
   sel.innerHTML = '';
@@ -156,7 +179,7 @@ async function loadDatabases() {
     sel.appendChild(o);
     if (row.uniqueID === dbs.test) o.selected = true; // default to test DB
   }
-  setPill($('loginState'), 'وارد نشده', '');
+  setLoginState('وارد نشده', '');
   markDatabaseBadge();
   await loadUsers();
 }
@@ -187,16 +210,83 @@ async function loadUsers() {
   if (rows.length === 1) sel.selectedIndex = 1;
 }
 
-// ---------- login ----------
+// ---------- login gate ----------
+
+const escHtml = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/**
+ * The proxy answers 502 with the real cause (ECONNREFUSED, EHOSTUNREACH, a
+ * timeout) when it cannot reach the Orash host — Node itself only says "fetch
+ * failed", so this is the only place the operator can learn what is wrong.
+ */
+function reportUnreachable(r) {
+  const reason = r.error || (r.httpStatus ? 'HTTP ' + r.httpStatus : 'دلیل نامشخص');
+  showStatus('loginStatus', 'bad', 'سامانه اوراش در دسترس نیست',
+    `<p>${escHtml(reason)}</p>`
+    + '<ul>'
+    + `<li>آدرس سرویس را بررسی کنید: <span class="mono" dir="ltr">${escHtml(baseUrl())}</span></li>`
+    + '<li>مطمئن شوید سرور اوراش روشن و روی شبکه در دسترس است.</li>'
+    + '<li>سپس «بارگذاری مجدد پایگاه داده‌ها» را بزنید.</li>'
+    + '</ul>');
+}
+
+/** True when the proxy could not reach Orash at all (as opposed to a rejection). */
+const isUnreachable = (r) => !r.ok && r.httpStatus === 502;
+
+/**
+ * The gate and the dashboard are two views of one page: the dashboard's own
+ * elements (the rail pill, the database badge, the scanner cards) already exist
+ * while the gate is up, so entering is just a swap — no state to rebuild.
+ */
+function enterApp(displayName) {
+  $('loginView').classList.add('hidden');
+  $('appShell').classList.remove('hidden');
+  window.scrollTo(0, 0);
+
+  const dbOpt = $('database').selectedOptions[0];
+  const name = displayName || $('username').value || '—';
+  $('s_database').textContent = dbOpt ? dbOpt.textContent : '—';
+  $('s_user').textContent = name;
+  $('profileName').textContent = name;
+  const isProd = uniqueID() === state.config?.databases?.prod;
+  $('s_write').textContent = isProd
+    ? 'ثبت روی پایگاه تولید مسدود است'
+    : 'ثبت مجاز است';
+  setPill($('sessionState'), 'متصل ✓', 'good');
+
+  // Scanners are only attached once there is a session to submit into.
+  if (document.body.dataset.entered !== '1') {
+    document.body.dataset.entered = '1';
+    document.dispatchEvent(new CustomEvent('orash:entered'));
+  }
+}
+
+/** Back to the gate. The token is dropped, so nothing can be submitted again. */
+function logout() {
+  state.token = null;
+  state.userId = null;
+  $('password').value = '';
+  $('loginStatus').classList.add('hidden');
+  $('appShell').classList.add('hidden');
+  $('loginView').classList.remove('hidden');
+  setPill($('sessionState'), 'خارج شد', 'bad');
+  $('profileName').textContent = 'وارد نشده';
+  setLoginState('وارد نشده', '');
+  $('btnLoadLookups').disabled = true;
+  refreshSubmitEnabled();
+}
+
 async function login() {
   const uid = uniqueID();
-  if (!uid) { alert('ابتدا پایگاه داده را انتخاب کنید.'); return; }
+  const gate = (kind, title, detail) => showStatus('loginStatus', kind, title, detail);
+  if (!uid) { gate('bad', 'پایگاه داده انتخاب نشده', '<p>یک پایگاه داده را از فهرست انتخاب کنید.</p>'); return; }
   const userOpt = $('username').selectedOptions[0];
   const username = $('username').value;
   const password = $('password').value;
-  if (!username) { alert('نام کاربری را انتخاب کنید.'); return; }
+  if (!username) { gate('bad', 'نام کاربری انتخاب نشده', '<p>کاربر مورد نظر را از فهرست انتخاب کنید.</p>'); return; }
 
-  setPill($('loginState'), 'در حال ورود…', 'busy');
+  gate('busy', 'در حال ورود…', '');
+  setLoginState('در حال ورود…', 'busy');
   const r = await withSpinner('btnLogin', 'در حال ورود…', () => callProxy('auth', {
     method: 'POST',
     body: { baseUrl: baseUrl(), body: { username, password, uniqueID: uid } },
@@ -206,10 +296,13 @@ async function login() {
   if (r.ok && content?.token) {
     state.token = content.token;
     state.userId = userOpt?.dataset.id ? Number(userOpt.dataset.id) : null;
-    setPill($('loginState'), 'ورود موفق ✓ (' + (content.name || username) + ')', 'good');
+    setLoginState('ورود موفق ✓ (' + (content.name || username) + ')', 'good');
     $('btnLoadLookups').disabled = false;
     setPill($('lookupState'), 'آماده بارگذاری', '');
     console.log('[login] success', { username, uniqueID: uid, name: content.name, userId: state.userId });
+    $('loginStatus').classList.add('hidden');
+    enterApp(content.name || username);
+    refreshSubmitEnabled();          // unblock the forms before the slow part
     await loadLookups();
   } else {
     state.token = null;
@@ -217,7 +310,13 @@ async function login() {
     const reason = (typeof content === 'string' && content)
       ? content
       : (r.data?.message || r.error || ('HTTP ' + r.httpStatus));
-    setPill($('loginState'), 'ورود ناموفق: ' + reason, 'bad');
+    if (isUnreachable(r)) {
+      setLoginState('سامانه در دسترس نیست', 'bad');
+      reportUnreachable(r);
+    } else {
+      setLoginState('ورود ناموفق', 'bad');
+      gate('bad', 'ورود ناموفق ✗', `<p>${escHtml(reason)}</p>`);
+    }
     // Log the failure for debugging (never log the password).
     console.error('[login] failed', {
       username,
@@ -598,16 +697,34 @@ async function loadGoodsReference() {
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
   document.querySelectorAll('.tabpanel').forEach((p) => p.classList.toggle('hidden', p.id !== 'tab-' + name));
+  // The profile lives in the rail foot rather than the nav, so it is not a .tab.
+  $('btnProfile').classList.toggle('active', name === 'profile');
+  window.scrollTo(0, 0);
 }
 
 // ---------- wire up ----------
 window.addEventListener('DOMContentLoaded', async () => {
-  await loadConfig();
-  await loadDatabases();
+  // The gate must never be left saying "preparing…": if even the local panel
+  // server cannot be reached, that is itself the message.
+  try {
+    await loadConfig();
+    await loadDatabases();
+  } catch (err) {
+    setLoginState('خطا در آماده‌سازی', 'bad');
+    $('btnLogin').disabled = true;
+    showStatus('loginStatus', 'bad', 'ارتباط با سرور پنل برقرار نشد',
+      `<p>${escHtml(err.message)}</p><p class="hint">سرویس پنل را بررسی کنید و صفحه را دوباره باز کنید.</p>`);
+  }
 
   $('btnReloadDbs').addEventListener('click', loadDatabases);
   $('database').addEventListener('change', async () => { markDatabaseBadge(); await loadUsers(); });
   $('btnLogin').addEventListener('click', login);
+  $('btnLogout').addEventListener('click', logout);
+  $('btnProfile').addEventListener('click', () => switchTab('profile'));
+  // Enter in the password field submits, as a login form should.
+  $('password').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !$('btnLogin').disabled) { e.preventDefault(); login(); }
+  });
   $('btnLoadLookups').addEventListener('click', loadLookups);
   $('btnAddLine').addEventListener('click', addLine);
   $('hsc').addEventListener('change', () => {

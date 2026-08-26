@@ -15,6 +15,7 @@
 
   const SOURCE_LABELS = {
     serial: 'بارکدخوان USB',
+    host: 'بارکدخوان USB (سرور)',
     keyboard: 'بارکدخوان صفحه‌کلیدی',
     camera: 'دوربین',
     phone: 'گوشی',
@@ -37,8 +38,12 @@
   const el = (id) => document.getElementById(id);
 
   // Auto-submit decides whether a scan reaches the service unattended, so it is
-  // a labelled toggle button rather than a checkbox, and it survives reloads.
-  const AUTO_KEY = 'orash.scan.autoSubmit';
+  // a labelled toggle button rather than a checkbox.
+  //
+  // It is deliberately NOT remembered. Writing to the database unattended is a
+  // decision about the batch in front of the operator, not a preference: a
+  // toggle left on last week must not silently register today's first scan. So
+  // every page load starts at خاموش and the operator turns it on for the run.
   const autoSubmit = () => el('btnAutoSubmit').getAttribute('aria-pressed') === 'true';
 
   function setAutoSubmit(on) {
@@ -49,7 +54,6 @@
     el('autoSubmitHint').textContent = on
       ? 'هر QR بلافاصله اعتبارسنجی و در سرویس ثبت می‌شود.'
       : 'اسکن‌ها در صف می‌مانند؛ برای ارسال، «ثبت» هر ردیف یا «ثبت همه» را بزنید.';
-    try { localStorage.setItem(AUTO_KEY, on ? '1' : '0'); } catch { /* private mode */ }
     renderQueue();
   }
   // Off by default on purpose: the form supplies the defaults for fields a QR
@@ -308,6 +312,240 @@
 
   // ------------------------------------------------------------------ serial
 
+  /**
+   * Web Serial is a desktop story. On a phone the scanner *is* the camera, so
+   * the USB card is hidden rather than shown as unsupported, and nothing tries
+   * to open a port. `'serial' in navigator` is already false on mobile Chrome,
+   * but that only tells us the API is missing — not that a USB scanner would be
+   * the wrong thing to ask for.
+   */
+  const isHandheld = () =>
+    /Android|iPhone|iPad|iPod|IEMobile|BlackBerry|Opera Mini|Mobile Safari/i.test(navigator.userAgent)
+    || (navigator.maxTouchPoints > 1 && !window.matchMedia('(pointer: fine)').matches);
+
+  const serialBaud = () => Number(el('serialBaud').value);
+
+  function serialNotice(kind, html) {
+    const p = el('serialNotice');
+    if (!p) return;
+    p.className = 'hint' + (kind === 'bad' ? ' warn' : '');
+    p.innerHTML = html || '';
+    p.classList.toggle('hidden', !html);
+  }
+
+  /** What the server can see in /dev and /sys. null when it cannot be asked. */
+  async function serialProbe() {
+    try {
+      const res = await fetch('/scan/serial-check');
+      const json = await res.json();
+      return json && json.ok ? json : null;
+    } catch { return null; }
+  }
+
+  let lastProbeStatus = null;
+  let hidSuggested = false;
+
+  /** Turn a probe result into the card's state, the chip, and (once) a log entry. */
+  function reportSerial(info, announce) {
+    const status = info?.status || 'unknown';
+    const fresh = status !== lastProbeStatus;
+    lastProbeStatus = status;
+    const say = (kind, title, html) => { if (announce || fresh) log(kind, title, html); };
+
+    const devLine = info?.deviceLabel ? `<p class="hint">${esc(info.deviceLabel)}</p>` : '';
+    const fixLine = info?.fix ? `<p>راه حل: <code dir="ltr">${esc(info.fix)}</code></p>` : '';
+
+    switch (status) {
+      // The port exists and this user may open it; only the browser's own
+      // per-device permission is missing, and that needs a click by design.
+      case 'ready':
+        setSourceStatus('serial', 'busy', 'نیازمند تأیید یک‌باره');
+        serialNotice('', `دستگاه <span class="mono" dir="ltr">${esc(info.port)}</span> آماده است. یک بار دکمه «اتصال» را بزنید و دستگاه را در پنجره مرورگر تأیید کنید؛ از آن پس در هر بار باز شدن صفحه خودکار وصل می‌شود.`);
+        say('busy', 'بارکدخوان پیدا شد — یک بار تأیید لازم است',
+          `<p>مرورگر اجازه باز کردن پورت را فقط با تأیید کاربر می‌دهد. دکمه «اتصال» را بزنید.</p>${devLine}`);
+        break;
+
+      // Windows: the OS hands COM ports to the logged-in user, so there is
+      // nothing to inspect and no way to tell "unplugged" from "not granted".
+      case 'unsupported':
+        setSourceStatus('serial', 'busy', 'نیازمند تأیید یک‌باره');
+        serialNotice('', 'اگر بارکدخوان به USB وصل است، یک بار دکمه «اتصال» را بزنید و آن را در پنجره مرورگر تأیید کنید؛ از آن پس خودکار وصل می‌شود.');
+        say('busy', 'یک بار تأیید دستگاه لازم است', `<p>${esc(info.hint || '')}</p>`);
+        break;
+
+      case 'hid-mode':
+        setSourceStatus('serial', 'bad', 'در حالت صفحه‌کلید');
+        serialNotice('bad', esc(info.hint));
+        say('bad', 'بارکدخوان در حالت سریال نیست', `<p>${esc(info.hint)}</p>`);
+        // It is plugged in and it does type, so the keyboard-wedge source is the
+        // one that can actually read it — switch to it instead of stopping here.
+        if (!hidSuggested && !ScanSources.keyboard.enabled) {
+          hidSuggested = true;
+          el('kbEnabled').checked = true;
+          ScanSources.keyboard.start();
+        }
+        break;
+
+      case 'no-permission':
+      case 'needs-relogin':
+        setSourceStatus('serial', 'bad', 'بدون دسترسی به پورت');
+        serialNotice('bad', esc(info.hint));
+        say('bad', 'دسترسی به پورت بارکدخوان وجود ندارد', `<p>${esc(info.hint)}</p>${fixLine}`);
+        break;
+
+      case 'no-device':
+        setSourceStatus('serial', 'bad', 'دستگاه متصل نیست');
+        serialNotice('bad', 'بارکدخوان به USB متصل نیست. دستگاه را وصل کنید؛ اتصال خودکار انجام می‌شود.');
+        say('bad', 'بارکدخوان متصل نیست',
+          '<p>هیچ دستگاه بارکدخوانی روی USB این کامپیوتر پیدا نشد. کابل را وصل کنید — پنل خودش دستگاه را می‌بیند و وصل می‌شود.</p>'
+          + '<p class="hint">برای اسکن بدون بارکدخوان می‌توانید از دوربین همین کامپیوتر یا از گوشی استفاده کنید.</p>');
+        break;
+
+      default:
+        setSourceStatus('serial', 'bad', 'متصل نیست');
+        serialNotice('bad', 'وضعیت دستگاه مشخص نشد؛ دکمه «اتصال» را بزنید.');
+        break;
+    }
+  }
+
+  // -------------------------------------------------- host-side serial bridge
+
+  /**
+   * Preferred path for the USB scanner: the panel server holds the device and
+   * streams scans here (lib/serial-host.js).
+   *
+   * The reason is a Chrome rule, not a preference. A Web Serial grant is only
+   * remembered for USB devices that report a serial number; handheld scanners
+   * generally do not, so the browser cannot recognise the same device after a
+   * relaunch and asks the operator to pick the port again — every single time.
+   * requestPort() must be behind a user gesture, so no page can avoid that.
+   * When the server owns the device there is no permission to grant and nothing
+   * to click, on this or any later start.
+   */
+  let hostMode = false;
+
+  function reportHost(st) {
+    const label = st.label || st.device || st.deviceLabel || 'بارکدخوان';
+
+    if (st.open) {
+      setSourceStatus('serial', 'good', `متصل — ${label}`);
+      serialNotice('', `دستگاه <span class="mono" dir="ltr">${esc(st.device || '')}</span> روی سرور باز است و اسکن‌ها مستقیم به این صفحه می‌رسند. مرورگر هیچ اجازه‌ای لازم ندارد، بنابراین با بستن و باز کردن مرورگر دوباره سؤال نمی‌شود.`);
+      return;
+    }
+
+    const fixLine = st.fix ? `<p>راه حل: <code dir="ltr">${esc(st.fix)}</code></p>` : '';
+
+    switch (st.presence) {
+      case 'no-device':
+        setSourceStatus('serial', 'bad', 'دستگاه متصل نیست');
+        serialNotice('bad', 'بارکدخوان به USB متصل نیست. دستگاه را وصل کنید؛ سرور خودش آن را می‌بیند و باز می‌کند.');
+        break;
+
+      case 'hid-mode':
+        setSourceStatus('serial', 'bad', 'در حالت صفحه‌کلید');
+        serialNotice('bad', esc(st.hint || ''));
+        if (!hidSuggested && !ScanSources.keyboard.enabled) {
+          hidSuggested = true;
+          el('kbEnabled').checked = true;
+          ScanSources.keyboard.start();
+        }
+        break;
+
+      case 'no-permission':
+      case 'needs-relogin':
+        setSourceStatus('serial', 'bad', 'بدون دسترسی به پورت');
+        serialNotice('bad', esc(st.hint || ''));
+        log('bad', 'سرور به پورت بارکدخوان دسترسی ندارد', `<p>${esc(st.hint || '')}</p>${fixLine}`);
+        break;
+
+      default:
+        setSourceStatus('serial', st.error ? 'bad' : '', st.error ? 'خطا' : 'در انتظار دستگاه');
+        serialNotice(st.error ? 'bad' : '', esc(st.error || st.hint || 'در انتظار دستگاه…'));
+        break;
+    }
+  }
+
+  /** Switch the card over to the host bridge and start listening. */
+  function useHostBridge(st) {
+    hostMode = true;
+    el('serialBrowserFoot').classList.add('hidden');
+    el('serialHostFoot').classList.remove('hidden');
+    ScanSources.host.on('scan', handleScan);
+    ScanSources.host.on('status', () => reportHost(ScanSources.host.info));
+    ScanSources.host.listen();
+    reportHost(st);
+  }
+
+  /**
+   * Connect to the scanner without a click when that is possible.
+   *
+   * Web Serial only hands back ports the user has already approved for this
+   * origin, and requestPort() requires a user gesture — so a scanner seen for
+   * the first time still needs one click, after which every later page load
+   * reconnects on its own. When no port can be opened, the server tells us why:
+   * nothing plugged in (an error the operator must fix), a device in
+   * keyboard mode, missing permissions, or simply no browser grant yet.
+   */
+  async function serialSync({ announce = false } = {}) {
+    const S = ScanSources.serial;
+    if (!S.supported || S.connected) return null;
+
+    // Only on the first pass: the background watcher must not make the pill
+    // flicker through "checking…" every few seconds.
+    if (lastProbeStatus === null) setSourceStatus('serial', 'busy', 'در حال بررسی دستگاه…');
+    if (await S.autoConnect(serialBaud())) {
+      lastProbeStatus = 'connected';
+      serialNotice('', '');
+      return 'connected';                 // the 'status' event already reported it
+    }
+
+    const info = await serialProbe();
+    reportSerial(info, announce);
+    return info?.status || 'unknown';
+  }
+
+  /**
+   * A scanner plugged in later must not require a reload. Web Serial's own
+   * `connect` event only fires for devices this origin already has permission
+   * for, so polling the server is what covers a first-time device.
+   */
+  function watchSerialPresence() {
+    setInterval(() => {
+      if (document.hidden || hostMode || ScanSources.serial.connected) return;
+      serialSync();                        // only logs when the situation changed
+    }, 6000);
+  }
+
+  /**
+   * Decide how this machine reads the USB scanner, once, after login.
+   * Server-side first; Web Serial only when the server cannot do it (Windows,
+   * or SERIAL_HOST=0).
+   */
+  async function startScannerSource() {
+    const st = await ScanSources.host.probe();
+    // `busy` means the port exists but another program holds it — ModemManager,
+    // or a browser tab that already owns it through Web Serial. The server
+    // cannot take it, so the browser path is the one that can still work.
+    if (st && st.enabled && !st.busy) { useHostBridge(st); return; }
+
+    if (st && st.busy) {
+      log('busy', 'سرور نتوانست بارکدخوان را در اختیار بگیرد',
+        `<p>${esc(st.error || '')}</p><p class="hint">اتصال از طریق مرورگر امتحان می‌شود. برای اینکه اتصال همیشه خودکار باشد، دستور زیر را یک بار اجرا کنید:</p>`
+        + '<p><code dir="ltr">sudo ./scripts/linux-serial-access.sh</code></p>');
+    }
+
+    if (!ScanSources.serial.supported) {
+      el('btnSerialConnect').disabled = true;
+      el('btnSerialAny').disabled = true;
+      setSourceStatus('serial', 'bad', 'در این مرورگر پشتیبانی نمی‌شود');
+      serialNotice('bad', 'Web Serial در این مرورگر نیست و سرور هم دستگاه را نمی‌خواند. از Chrome یا Edge ۸۹+ استفاده کنید، یا بارکدخوان را در حالت صفحه‌کلید (HID) بگذارید.');
+      return;
+    }
+    ScanSources.serial.watchPlugEvents();
+    serialSync({ announce: false });
+    watchSerialPresence();
+  }
+
   async function serialConnect(anyDevice) {
     const S = ScanSources.serial;
     if (!S.supported) {
@@ -318,11 +556,15 @@
     try {
       setSourceStatus('serial', 'busy', 'در حال اتصال…');
       const port = await S.choosePort({ anyDevice });
-      await S.open(port, Number(el('serialBaud').value));
+      await S.open(port, serialBaud());
+      lastProbeStatus = 'connected';
+      serialNotice('', '');
+      log('good', 'بارکدخوان متصل شد', '<p>از این پس در هر بار باز شدن صفحه خودکار وصل می‌شود.</p>');
     } catch (err) {
       // NotFoundError just means the user dismissed the browser's device picker.
       if (err.name === 'NotFoundError') {
-        setSourceStatus('serial', '', 'متصل نیست');
+        lastProbeStatus = null;
+        serialSync();                      // put the card back to what is really there
         return;
       }
       setSourceStatus('serial', 'bad', 'اتصال ناموفق');
@@ -517,15 +759,38 @@
     // --- serial
     el('btnSerialConnect').addEventListener('click', () => serialConnect(false));
     el('btnSerialAny').addEventListener('click', () => serialConnect(true));
-    el('btnSerialDisconnect').addEventListener('click', () => ScanSources.serial.close());
-    if (!ScanSources.serial.supported) {
-      el('btnSerialConnect').disabled = true;
-      el('btnSerialAny').disabled = true;
-      setSourceStatus('serial', 'bad', 'در این مرورگر پشتیبانی نمی‌شود');
+    el('btnSerialDisconnect').addEventListener('click', () => {
+      lastProbeStatus = 'connected';       // keep the watcher from re-announcing
+      ScanSources.serial.close();
+      serialNotice('', '');
+    });
+    // Auto-connect picks 9600; a device programmed differently must be able to
+    // change speed without hunting for the disconnect button first.
+    el('serialBaud').addEventListener('change', () => {
+      const S = ScanSources.serial;
+      if (!S.connected || !S.port) return;
+      S.open(S.port, serialBaud()).catch((err) => {
+        setSourceStatus('serial', 'bad', 'اتصال ناموفق');
+        log('bad', 'تغییر سرعت ناموفق بود', `<p>${esc(err.message)}</p>`);
+      });
+    });
+
+    el('btnSerialRetry').addEventListener('click', async () => {
+      setSourceStatus('serial', 'busy', 'در حال جست‌وجو…');
+      const st = await ScanSources.host.retry();
+      if (st) reportHost(st);
+    });
+
+    if (isHandheld()) {
+      // A phone scans with its camera; there is no USB device to attach.
+      el('tile_serial')?.classList.add('hidden');
+      el('dev_serial')?.classList.add('hidden');
     } else {
-      ScanSources.serial.watchPlugEvents();
-      // Reopen a port the user already approved, so a reload just works.
-      ScanSources.serial.autoConnect(Number(el('serialBaud').value));
+      // Wait for the login gate: the scanner is only useful once there is a
+      // session to submit into, and its messages belong on the dashboard, not
+      // behind it.
+      if (document.body.dataset.entered === '1') startScannerSource();
+      else document.addEventListener('orash:entered', startScannerSource, { once: true });
     }
 
     // --- keyboard wedge
@@ -553,9 +818,11 @@
 
     // --- auto-submit toggle
     el('btnAutoSubmit').addEventListener('click', () => setAutoSubmit(!autoSubmit()));
-    let remembered = null;
-    try { remembered = localStorage.getItem(AUTO_KEY); } catch { /* private mode */ }
-    setAutoSubmit(remembered === null ? true : remembered === '1');
+    // Always off at load. See the note on the toggle above: this is a decision
+    // per batch, not a saved preference, so a stale "on" cannot come back.
+    setAutoSubmit(false);
+    // Drop the value earlier versions stored, so it cannot surprise anyone.
+    try { localStorage.removeItem('orash.scan.autoSubmit'); } catch { /* private mode */ }
 
     // --- queue controls
     el('btnScanSendAll').addEventListener('click', sendAll);

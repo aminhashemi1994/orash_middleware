@@ -1,4 +1,4 @@
 how to test
-http://localhost:4173/samples.html
+http://localhost:4173/label-qr.html
 
-this is the sample data
+node scripts/label-qr.js   # rebuild it from نسخه جدید لیبل.xlsm
