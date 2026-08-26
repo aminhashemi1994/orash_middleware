@@ -268,10 +268,22 @@ async function handleScanRoute(sub, req, res, url) {
     });
     res.write('retry: 2000\n\n');
     hostClients.add(res);
+    // Claiming the tty is what this stream is for. Held only while a panel is
+    // listening, so a browser using Web Serial on this machine finds the port
+    // free — two owners of one tty is not possible, and the browser is the one
+    // that cannot be told to wait.
+    serialHost.attach();
     hostSend(res, 'ready', serialHost.status());
 
     const beat = setInterval(() => { try { res.write(': ping\n\n'); } catch { /* noop */ } }, 25000);
-    const drop = () => { clearInterval(beat); hostClients.delete(res); };
+    let dropped = false;
+    const drop = () => {
+      if (dropped) return;             // 'close' and 'error' both fire on a reload
+      dropped = true;
+      clearInterval(beat);
+      hostClients.delete(res);
+      serialHost.detach();
+    };
     req.on('close', drop);
     req.on('error', drop);
     res.on('error', drop);
@@ -491,13 +503,12 @@ if (tlsReady) {
   console.log('      Install openssl, or set TLS_KEY/TLS_CERT, or run the phone page on a trusted origin.');
 }
 
-// Own the scanner here so the browser never has to ask for the port. Starts
-// looking immediately and keeps looking, so plugging it in later is enough.
-serialHost.start();
+// The scanner is read on demand, not at boot: the device is opened only while
+// a panel is listening on /scan/host/stream. Holding it here permanently would
+// block Web Serial in a browser on this same machine, which is the only path a
+// remotely opened panel has.
 if (serialHost.enabled) {
-  const st = serialHost.status();
-  // The first attach happens a tick later, and logs itself ("[serial] ...").
-  console.log(`Scanner (host)      ${st.open ? `${st.device} @ ${st.baud} baud` : 'watching for a USB scanner'}`);
+  console.log('Scanner (host)      ready — the device is opened while a panel is listening');
 } else if (!serialHost.supported) {
   console.log('Scanner (host)      not supported on this platform — the panel will use Web Serial');
 } else {
