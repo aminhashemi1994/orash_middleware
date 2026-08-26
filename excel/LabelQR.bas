@@ -28,6 +28,12 @@ Private Const TOLERATE_EXPIRED_CERT As Boolean = True
 Private Const SHEET_NAME As String = "صدور"
 Private Const ANCHOR_RANGE As String = "F7:G10"   ' where the picture is placed
 Private Const SHAPE_NAME As String = "LABEL_QR"   ' so a refresh replaces it
+
+' Share of the anchor left as white margin on each side, so the QR keeps the
+' quiet zone it needs to scan, and never touches the cell borders.
+Private Const MARGIN_RATIO As Double = 0.08
+' Below roughly 2cm a handheld scanner has to be held uncomfortably close.
+Private Const MIN_SIDE_POINTS As Double = 57
 Private Const NAME_SEPARATOR As String = " "
 
 Private Const CELL_CODE As String = "Z3"
@@ -135,19 +141,51 @@ Failed:
     Fetch = Err.Description & " (" & url & ")"
 End Function
 
-' Puts the picture over ANCHOR_RANGE, square and centred, replacing the one
-' from the previous run.
+' Puts the picture over ANCHOR_RANGE, square and centred.
+'
+' The previous QR is left in place until the new one is ready to take its
+' position, and is only then replaced. Deleting first meant that any failure
+' after that point — a download that fell over, a run cancelled midway — left
+' the sheet with no QR at all, and an operator looking at a label that had one
+' a moment ago. Overwriting keeps the last good code on the sheet until there
+' is a new good code to put there.
+'
+' MARGIN_RATIO keeps a white margin inside the anchor. A QR printed edge to
+' edge against the cell borders loses the quiet zone the symbol needs, and
+' scanners start refusing it.
 Private Sub PlacePicture(ByVal ws As Worksheet, ByVal file As String)
-    Dim box As Range, side As Double, pic As Object
+    Dim box As Range, side As Double, pic As Object, old As Shape
     Set box = ws.Range(ANCHOR_RANGE)
-    side = Application.Min(box.Width, box.Height)
+    side = Application.Min(box.Width, box.Height) * (1 - 2 * MARGIN_RATIO)
+    If side < MIN_SIDE_POINTS Then side = MIN_SIDE_POINTS
 
-    RemoveShape ws
+    Set old = FindShape(ws)
+
     Set pic = ws.Shapes.AddPicture(file, msoFalse, msoTrue, _
         box.Left + (box.Width - side) / 2, box.Top + (box.Height - side) / 2, side, side)
-    pic.Name = SHAPE_NAME
+
+    ' Square regardless of the PNG's own aspect ratio, which LockAspectRatio
+    ' would otherwise impose on the height set above.
+    pic.LockAspectRatio = msoFalse
+    pic.Width = side
+    pic.Height = side
     pic.Placement = xlMoveAndSize
+
+    ' Only now is the old one redundant.
+    If Not old Is Nothing Then old.Delete
+    pic.Name = SHAPE_NAME
 End Sub
+
+' The QR currently on the sheet, or Nothing.
+Private Function FindShape(ByVal ws As Worksheet) As Shape
+    Dim shp As Shape
+    For Each shp In ws.Shapes
+        If shp.Name = SHAPE_NAME Then
+            Set FindShape = shp
+            Exit Function
+        End If
+    Next shp
+End Function
 
 Private Sub RemoveShape(ByVal ws As Worksheet)
     Dim shp As Shape

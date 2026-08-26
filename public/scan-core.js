@@ -368,8 +368,39 @@
     return inStr || depth > 0;
   }
 
+  /**
+   * Decode the raw bytes of a scan into text.
+   *
+   * A serial scanner sends bytes, not characters, and which encoding those
+   * bytes are in is a setting on the device. Decoding as UTF-8 unconditionally
+   * is lossy in the one case that matters here: a scanner configured for the
+   * Arabic code page sends «ترمینال» as seven Windows-1256 bytes, which are not
+   * valid UTF-8, so a lenient decode replaces every one of them with U+FFFD and
+   * the name is gone before anything can repair it.
+   *
+   * So decode strictly first. UTF-8 is self-validating — arbitrary single-byte
+   * text almost never forms a valid sequence — which makes a successful strict
+   * decode strong evidence the device really is sending UTF-8. Only when that
+   * fails is the text single-byte, and Windows-1256 is the code page a scanner
+   * sold for this market falls back to.
+   *
+   * @param {Uint8Array} bytes
+   */
+  function decodeScan(bytes) {
+    const utf8 = tryDecode(bytes, 'utf-8', true);
+    if (utf8 !== null) return utf8;
+    const cp1256 = tryDecode(bytes, 'windows-1256', false);
+    if (cp1256 !== null) return cp1256;
+    return tryDecode(bytes, 'utf-8', false) || '';
+  }
+
+  function tryDecode(bytes, encoding, fatal) {
+    try { return new TextDecoder(encoding, { fatal }).decode(bytes); }
+    catch { return null; }
+  }
+
   const api = {
-    parse, canonicalize, withDefaults, validate, looksTruncated,
+    parse, canonicalize, withDefaults, validate, looksTruncated, decodeScan,
     normalizeKey, toAsciiDigits, repairMojibake,
     KNOWN, NUMERIC, BOOLEAN, STRING,
   };

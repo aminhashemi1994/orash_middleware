@@ -99,9 +99,12 @@
 
     async _readLoop() {
       this._keepReading = true;
-      const decoder = new TextDecoder();
-      let buffer = '';
+      // Bytes, not text: the device's encoding is only decidable over a whole
+      // payload (ScanCore.decodeScan), and a chunk boundary can fall inside a
+      // multi-byte character. Decoding per chunk loses both.
+      let buffer = new Uint8Array(0);
       let flushTimer = null;
+      const concat = (a, b) => { const out = new Uint8Array(a.length + b.length); out.set(a); out.set(b, a.length); return out; };
 
       // Some scanners are configured without a suffix, so also flush on silence.
       // A gap is not the end of a code, though: at 9600 baud a long JSON QR
@@ -112,14 +115,14 @@
       // the rest ever arriving.
       let waited = 0;
       const flush = () => {
-        if (ScanCore.looksTruncated(buffer) && waited < TRUNCATED_WAIT_MS) {
+        const text = ScanCore.decodeScan(buffer).trim();
+        if (ScanCore.looksTruncated(text) && waited < TRUNCATED_WAIT_MS) {
           waited += IDLE_FLUSH_MS;
           flushTimer = setTimeout(flush, IDLE_FLUSH_MS);
           return;
         }
         waited = 0;
-        const text = buffer.trim();
-        buffer = '';
+        buffer = new Uint8Array(0);
         if (text && this._dedupe(text)) this.emit('scan', { text, source: 'serial' });
       };
 
@@ -129,10 +132,10 @@
           for (;;) {
             const { value, done } = await this._reader.read();
             if (done) break;
-            buffer += decoder.decode(value, { stream: true });
+            buffer = buffer.length ? concat(buffer, value) : new Uint8Array(value);
             let idx;
-            while ((idx = buffer.search(/[\r\n]/)) !== -1) {
-              const line = buffer.slice(0, idx).trim();
+            while ((idx = buffer.findIndex((b) => b === 0x0D || b === 0x0A)) !== -1) {
+              const line = ScanCore.decodeScan(buffer.subarray(0, idx)).trim();
               buffer = buffer.slice(idx + 1);
               if (line && this._dedupe(line)) this.emit('scan', { text: line, source: 'serial' });
             }
