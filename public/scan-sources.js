@@ -28,6 +28,12 @@
 
   const GRYPHON_VENDOR_ID = 0x05f9;   // PSC Scanning / Datalogic
 
+  // Idle-gap framing for scanners configured without a suffix. 400ms comfortably
+  // clears the inter-chunk gaps seen at 9600 baud; a payload still open after
+  // 3s is treated as all that is coming.
+  const IDLE_FLUSH_MS = 400;
+  const TRUNCATED_WAIT_MS = 3000;
+
   /** Minimal event emitter shared by every source. */
   function emitter() {
     const handlers = {};
@@ -98,7 +104,20 @@
       let flushTimer = null;
 
       // Some scanners are configured without a suffix, so also flush on silence.
+      // A gap is not the end of a code, though: at 9600 baud a long JSON QR
+      // needs hundreds of milliseconds on the wire and arrives in chunks. Wait
+      // for the payload to close before flushing, or half of it is reported as
+      // a whole scan. IDLE_FLUSH_MS is the gap after a payload that already
+      // looks complete; TRUNCATED_WAIT_MS is the ceiling before giving up on
+      // the rest ever arriving.
+      let waited = 0;
       const flush = () => {
+        if (ScanCore.looksTruncated(buffer) && waited < TRUNCATED_WAIT_MS) {
+          waited += IDLE_FLUSH_MS;
+          flushTimer = setTimeout(flush, IDLE_FLUSH_MS);
+          return;
+        }
+        waited = 0;
         const text = buffer.trim();
         buffer = '';
         if (text && this._dedupe(text)) this.emit('scan', { text, source: 'serial' });
@@ -118,7 +137,8 @@
               if (line && this._dedupe(line)) this.emit('scan', { text: line, source: 'serial' });
             }
             clearTimeout(flushTimer);
-            if (buffer) flushTimer = setTimeout(flush, 150);
+            waited = 0;
+            if (buffer) flushTimer = setTimeout(flush, IDLE_FLUSH_MS);
           }
         } catch (err) {
           if (this._keepReading) this.emit('status', { state: 'error', detail: err.message });

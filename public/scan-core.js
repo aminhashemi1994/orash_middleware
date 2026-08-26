@@ -331,8 +331,45 @@
     return errs;
   }
 
+  /**
+   * Is this buffer a QR payload that has not finished arriving?
+   *
+   * A serial line has no framing: a scanner configured without a suffix ends a
+   * code with silence, so the readers flush on an idle gap. But at 9600 baud a
+   * byte takes ~1ms, so a 300-byte JSON envelope needs ~310ms on the wire and
+   * arrives as several chunks with real gaps between them. Flushing on the
+   * first gap cuts the payload in half — the panel then reports "no known
+   * field found" over a JSON string that simply stops mid-value.
+   *
+   * So before flushing on silence, ask whether the text can already be a whole
+   * payload. Only structured content can answer: an unbalanced brace, or a
+   * string that never closes, means more bytes are still coming. Anything that
+   * is not JSON-shaped (a bare barcode, key=value pairs) is complete as soon as
+   * it stops, and is reported unchanged.
+   */
+  function looksTruncated(text) {
+    const s = String(text || '').trim();
+    if (!s) return false;
+    if (s[0] !== '{' && s[0] !== '[') return false;   // not JSON-shaped
+
+    let depth = 0, inStr = false, esc = false;
+    for (const ch of s) {
+      if (esc) { esc = false; continue; }
+      if (inStr) {
+        if (ch === '\\') esc = true;
+        else if (ch === '"') inStr = false;
+        continue;
+      }
+      if (ch === '"') inStr = true;
+      else if (ch === '{' || ch === '[') depth++;
+      else if (ch === '}' || ch === ']') depth--;
+    }
+    // A closed structure at depth 0 outside a string is all there is to read.
+    return inStr || depth > 0;
+  }
+
   const api = {
-    parse, canonicalize, withDefaults, validate,
+    parse, canonicalize, withDefaults, validate, looksTruncated,
     normalizeKey, toAsciiDigits, repairMojibake,
     KNOWN, NUMERIC, BOOLEAN, STRING,
   };
