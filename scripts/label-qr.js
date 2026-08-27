@@ -22,7 +22,8 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
-const { FIXED, buildLabel, qrSvg, qrPng } = require('../lib/label-qr');
+const { buildLabel, qrSvg, qrPng } = require('../lib/label-qr');
+const secondGroup = require('../public/second-group.js');
 
 const ROOT = path.join(__dirname, '..');
 const OUT_DIR = path.join(ROOT, 'labels');
@@ -158,7 +159,9 @@ function sheet(label, text, render, source) {
     ['کد کالا (code)', label.code, CELLS.code.join('+')],
     ['عنوان کالا (name)', label.name, CELLS.name.join('+')],
     ['سریال (serial)', label.serial, CELLS.serial.join('+')],
-    ...Object.entries(FIXED).map(([k, v]) => [k, String(v), 'ثابت']),
+    // Not in the QR — added by the panel when the good is registered. Shown
+    // here so the sheet still says what will reach Orash.
+    ['گروه فرعی (secondGroupCodeRef)', String(secondGroup.resolve(label.code).code), 'از رقم دوم و سوم کد'],
   ].map(([k, v, from]) => `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(v)}</td><td class="dim" dir="ltr">${escapeHtml(from)}</td></tr>`).join('\n      ');
 
   return `<!doctype html>

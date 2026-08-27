@@ -44,6 +44,12 @@ const { mockForward } = require('./lib/mock-upstream');
 const serialCheck = require('./lib/serial-check');
 const serialHost = require('./lib/serial-host');
 const labelQr = require('./lib/label-qr');
+const secondGroup = require('./public/second-group.js');
+const secondGroupStore = require('./lib/second-group-store');
+
+// Apply any saved sub-group table before the first label can be built.
+const secondGroupsAtBoot = secondGroupStore.read();
+console.log(`[second-groups] ${secondGroupsAtBoot.groups.length} rows (${secondGroupsAtBoot.source === 'file' ? secondGroupStore.FILE : 'جدول پیش‌فرض'})`);
 
 const PORT = Number(process.env.PORT || 4173);
 // 0.0.0.0 for a LAN machine; behind a reverse proxy set HOST=127.0.0.1 so the
@@ -409,8 +415,12 @@ async function handleRequest(req, res) {
         label = labelQr.buildLabel({ code: q.get('code'), serial: q.get('serial'), name: q.get('name') });
       } catch (err) {
         // Plain text, not JSON: VBA reads the body straight into a MsgBox.
+        // Two kinds of refusal reach here: empty cells, and a goods code whose
+        // sub-group cannot be derived — each needs its own sentence.
         res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
-        return res.end(`این فیلدها خالی هستند: ${(err.missing || []).join('، ')}`);
+        return res.end(err.missing
+          ? `این فیلدها خالی هستند: ${err.missing.join('، ')}`
+          : String(err.message || err));
       }
       const text = JSON.stringify(label);
       console.log(`[label] ${format} code=${label.code} serial=${label.serial} name=${label.name.slice(0, 40)}`);
@@ -433,6 +443,27 @@ async function handleRequest(req, res) {
         return res.end(png);
       }
       return sendJson(res, 404, { ok: false, error: 'use /label/qr.png, .svg or .json' });
+    }
+
+    // GET/PUT the sub-group table the panel edits. It lives on the server so
+    // the label builder and every browser agree on one mapping.
+    if (url.pathname === '/settings/second-groups') {
+      if (req.method === 'GET') {
+        return sendJson(res, 200, { ok: true, ...secondGroupStore.read() });
+      }
+      if (req.method === 'PUT') {
+        let body;
+        try { body = await readBody(req); }
+        catch { return sendJson(res, 400, { ok: false, error: 'بدنه‌ی درخواست JSON معتبر نیست' }); }
+        try {
+          const saved = secondGroupStore.write(body.groups);
+          console.log(`[second-groups] saved ${saved.groups.length} rows`);
+          return sendJson(res, 200, { ok: true, ...saved });
+        } catch (err) {
+          return sendJson(res, 400, { ok: false, error: String(err.message || err) });
+        }
+      }
+      return sendJson(res, 405, { ok: false, error: 'GET or PUT' });
     }
 
     if (url.pathname === '/config') {

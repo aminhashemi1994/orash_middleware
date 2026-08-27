@@ -196,60 +196,78 @@
         <details id="scanRawWrap" class="hidden"><summary>داده خام اسکن</summary><pre id="scanRawJson"></pre></details>
       </section>
 
-      <!-- ============ defaults form ============ -->
+      <!-- ============ register a good ============ -->
       <section class="panel">
         <div class="section-head">
-          <h2>مقادیر پیش‌فرض و ثبت دستی</h2>
-          <span class="hint">هر فیلدی که در QR نباشد از اینجا برداشته می‌شود.</span>
+          <h2>ثبت کالا</h2>
+          <span class="hint">آنچه در QR نباشد از همین‌جا برداشته می‌شود.</span>
         </div>
+
         <div class="grid">
-          <label><span class="lbl-row">نوع <em>الزامی</em></span>
+          <label><span class="lbl-row">کد کالا <em>۲۱ رقم</em></span>
+            <input id="g_code" type="text" inputmode="numeric" placeholder="۱۰۲۰۰۰۰۰۰۰۲۰۰۰۶۴۰۴۰۷۰" />
+          </label>
+          <label><span class="lbl-row">عنوان کالا</span>
+            <input id="g_name" type="text" placeholder="مثلاً: کابل ۲.۵" />
+          </label>
+          <label><span class="lbl-row">سریال</span>
+            <input id="g_serial" type="text" placeholder="مثلاً: 123 یا 123-a" />
+          </label>
+          <label><span class="lbl-row">نوع</span>
             <select id="g_type">
               <option value="1">۱ - کالا</option>
               <option value="2">۲ - خدمات</option>
             </select>
           </label>
-          <label><span class="lbl-row">کد کالا (code) <em>الزامی</em></span>
-            <input id="g_code" type="text" inputmode="numeric" placeholder="عدد، معمولاً ۲۱ رقم" />
-          </label>
-          <label><span class="lbl-row">عنوان کالا (name) <em>الزامی</em></span>
-            <input id="g_name" type="text" placeholder="مثلاً: کابل ۲.۵" />
-          </label>
-          <label><span class="lbl-row">سریال (serial) <em>الزامی</em></span>
-            <input id="g_serial" type="text" placeholder="مثلاً: 123 یا 123-a" />
-          </label>
-          <label><span class="lbl-row">واحد شمارش (unitIdRef) <em>الزامی</em></span>
-            <select id="g_unitIdRef_sel" class="ref-select"><option value="">— ابتدا «دریافت مقادیر از سرویس» —</option><option value="__manual__">ورود دستی کد</option></select>
-            <input id="g_unitIdRef" type="number" placeholder="کد واحد" />
-          </label>
-          <label><span class="lbl-row">نوع بسته‌بندی (unitPackingCodeRef) <em>الزامی</em></span>
-            <select id="g_unitPackingCodeRef_sel" class="ref-select"><option value="">— ابتدا «دریافت مقادیر از سرویس» —</option><option value="__manual__">ورود دستی کد</option></select>
-            <input id="g_unitPackingCodeRef" type="number" placeholder="کد بسته‌بندی" />
-          </label>
-          <label><span class="lbl-row">گروه اصلی (mainGroupCodeRef) <em>الزامی</em></span>
-            <select id="g_mainGroupCodeRef_sel" class="ref-select"><option value="">— ابتدا «دریافت مقادیر از سرویس» —</option><option value="__manual__">ورود دستی کد</option></select>
-            <input id="g_mainGroupCodeRef" type="number" placeholder="کد گروه اصلی" />
-          </label>
-          <label><span class="lbl-row">گروه فرعی (secondGroupCodeRef) <em>الزامی</em></span>
-            <select id="g_secondGroupCodeRef_sel" class="ref-select"><option value="">— ابتدا «دریافت مقادیر از سرویس» —</option><option value="__manual__">ورود دستی کد</option></select>
-            <input id="g_secondGroupCodeRef" type="number" placeholder="کد گروه فرعی" />
-          </label>
         </div>
+
+        <div class="fixed-codes">
+          <div class="fixed-codes-head">
+            <span>کدهای ثابت</span>
+            <span class="hint">تغییرشان از بخش تنظیمات در تب پروفایل</span>
+          </div>
+          <dl class="chips">
+            <div class="chip"><dt>واحد شمارش</dt><dd id="g_unitIdRef">—</dd></div>
+            <div class="chip"><dt>نوع بسته‌بندی</dt><dd id="g_unitPackingCodeRef">—</dd></div>
+            <div class="chip"><dt>گروه اصلی</dt><dd id="g_mainGroupCodeRef">—</dd></div>
+            <div class="chip chip-wide"><dt>گروه فرعی <span class="hint">از رقم دوم و سوم کد</span></dt>
+              <dd id="g_secondGroupCodeRef_view">— کد کالا را وارد کنید —</dd>
+              <select id="g_secondGroupCodeRef_pick" class="ref-select hidden"></select>
+              <input id="g_secondGroupCodeRef" type="hidden" />
+            </div>
+          </dl>
+        </div>
+
         <div class="row">
-          <button id="btnSubmitGood" class="primary" disabled>ثبت کالا (CreateGood)</button>
+          <button id="btnSubmitGood" class="primary" disabled>ثبت کالا</button>
           <button id="btnPreviewGood" class="ghost">پیش‌نمایش JSON</button>
-          <button id="btnLoadGoodsRef" class="ghost" disabled>کالاهای موجود</button>
-          <button id="btnLoadCodeRef" class="ghost" disabled>دریافت مقادیر از سرویس</button>
         </div>
         <div id="goodStatus" class="status hidden"></div>
         <details id="goodPreviewWrap" class="hidden"><summary>بدنه درخواست</summary><pre id="goodPreviewJson"></pre></details>
-        <details id="goodsRefWrap" class="hidden"><summary>کالاهای موجود (مرجع)</summary><pre id="goodsRefJson">—</pre></details>
-        <details id="codeRefWrap" class="hidden">
-          <summary>مقادیر مرجع دیده‌شده در کالاهای موجود</summary>
-          <p class="hint">سرویس اوراش هیچ endpoint فهرست‌کردنی برای واحد شمارش، گروه اصلی/فرعی و نوع بسته‌بندی ندارد؛ این فهرست از روی کالاهای ثبت‌شده (GetGoods) ساخته می‌شود، پس فقط مقادیری را نشان می‌دهد که دست‌کم یک کالا از آن‌ها استفاده کرده است.</p>
-          <pre id="codeRefJson">—</pre>
+
+        <details class="tools">
+          <summary>ابزار بررسی</summary>
+          <div class="row">
+            <button id="btnLoadGoodsRef" class="ghost" disabled>کالاهای موجود</button>
+            <button id="btnLoadCodeRef" class="ghost" disabled>مقادیر مرجع سرویس</button>
+          </div>
+          <details id="goodsRefWrap" class="hidden"><summary>کالاهای موجود</summary><pre id="goodsRefJson">—</pre></details>
+          <details id="codeRefWrap" class="hidden">
+            <summary>مقادیر مرجع دیده‌شده در کالاهای موجود</summary>
+            <p class="hint">سرویس اوراش endpoint فهرست‌کردنی برای این کدها ندارد؛ این فهرست از روی کالاهای ثبت‌شده ساخته می‌شود و فقط مقادیرِ در حال استفاده را نشان می‌دهد.</p>
+            <pre id="codeRefJson">—</pre>
+          </details>
+          <details id="subGroupTableWrap">
+            <summary>جدول گروه فرعی</summary>
+            <p class="hint">رقم دوم و سوم کد کالا، کد اکسل خانواده‌ی کابل است؛ ستون سوم شناسه‌ای است که به اوراش فرستاده می‌شود.</p>
+            <div class="table-scroll"><table id="subGroupTable" class="ref-table">
+              <thead><tr><th>نام گروه</th><th>کد اکسل</th><th>شناسه اوراش</th></tr></thead>
+              <tbody></tbody>
+            </table></div>
+          </details>
         </details>
       </section>
+
       <!-- ============ scan sources ============ -->
       <section class="sources">
         <div class="section-head">
@@ -387,6 +405,26 @@
           <span class="hint">با خروج، توکن پاک می‌شود و تا ورود بعدی هیچ اسکنی ثبت نمی‌شود.</span>
         </div>
       </section>
+      <section class="panel">
+        <div class="section-head">
+          <h2>تنظیمات گروه فرعی</h2>
+          <span id="sgState" class="pill">—</span>
+        </div>
+        <p class="hint">رقم دوم و سوم کد ۲۱ رقمی کالا، «کد اکسل» است؛ «کد اوراش» همان چیزی است که در <code>secondGroupCodeRef</code> ثبت می‌شود. کد اکسل خالی یعنی هیچ کد کالایی به این گروه نمی‌رسد. تغییرات پس از ذخیره روی لیبل‌ها و اسکن‌ها هم اثر می‌گذارد.</p>
+        <div class="table-scroll">
+          <table id="sgTable" class="ref-table edit-table">
+            <thead><tr><th>نام محصول</th><th>کد اکسل محصول</th><th>کد اوراش محصول</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="row">
+          <button id="sgAdd" class="ghost">افزودن ردیف</button>
+          <button id="sgSave" class="primary">ذخیره</button>
+          <button id="sgReload" class="ghost">بازگردانی از سرور</button>
+          <button id="sgReset" class="ghost">بازگشت به جدول اولیه</button>
+        </div>
+        <div id="sgStatus" class="status hidden"></div>
+      </section>
       <details class="panel"><summary>پاسخ خام آخرین درخواست</summary><pre id="rawResponse">—</pre></details>
     </div>
 
@@ -466,6 +504,7 @@
 
   <script src="/vendor/jsQR.js"></script>
   <script src="/vendor/qrcode-gen.js"></script>
+  <script src="/second-group.js"></script>
   <script src="/scan-core.js"></script>
   <script src="/scan-sources.js"></script>
   <script src="/app.js"></script>

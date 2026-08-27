@@ -12,9 +12,10 @@ Private Const LQ_CELL_CODE As String = "Z3"
 Private Const LQ_CELL_SERIAL As String = "C4"
 Private Const LQ_CELLS_NAME As String = "C5,C6,D9"
 Private Const LQ_SEPARATOR As String = " "
-Private Const LQ_TYPE As Long = 1
-Private Const LQ_UNIT_ID_REF As Long = 5
-Private Const LQ_MAIN_GROUP_CODE_REF As Long = 1
+
+' The QR carries only what this sheet knows. The reference codes CreateGood
+' also needs — type, unit, packing, main and second group — are added by the
+' panel when the good is registered, so a label stays valid if they change.
 
 Private Sub CheckBox1_Click()
 End Sub
@@ -1437,9 +1438,6 @@ Public Function LabelPayloadJson() As String
     out = "{"
     out = out & """code"":" & LQ_JsonString(code) & ","
     out = out & """name"":" & LQ_JsonString(goodName) & ","
-    out = out & """type"":" & LQ_TYPE & ","
-    out = out & """unitIdRef"":" & LQ_UNIT_ID_REF & ","
-    out = out & """mainGroupCodeRef"":" & LQ_MAIN_GROUP_CODE_REF & ","
     out = out & """serial"":" & LQ_JsonString(serial)
     out = out & "}"
 

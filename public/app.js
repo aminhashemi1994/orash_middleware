@@ -392,9 +392,6 @@ async function loadLookups() {
       currentUserId: state.userId, withFi: false,
     });
     state.goods = goodsRowsFrom(goods.data);
-    // Same rows the reference dropdowns are built from, so picking up the
-    // lookups fills them too — no second GetGoods call.
-    for (const field of CODE_REF_FIELDS) fillRefSelect(field, collectRefValues(state.goods, field));
 
     // (re)build any existing line rows so their goods dropdown fills
     document.querySelectorAll('#linesBody tr').forEach(fillGoodsSelectInRow);
@@ -595,6 +592,215 @@ async function submit() {
 const gVal = (id) => $(id).value.trim();
 const gNum = (id) => (gVal(id) === '' ? undefined : Number(gVal(id)));
 
+/**
+ * Codes that are fixed for every good this panel registers, and are not the
+ * operator's to change — the form only shows them. They must stay in step with
+ * FIXED in lib/label-qr.js and the LQ_* constants in excel/LabelQR.bas, which
+ * put the same numbers on a printed label.
+ *
+ * `secondGroupCodeRef` is deliberately not here: it is still chosen per good.
+ */
+const LOCKED_GOOD_FIELDS = {
+  unitIdRef: { value: 5, label: 'متر' },
+  unitPackingCodeRef: { value: 1, label: 'کلاف' },
+  mainGroupCodeRef: { value: 1, label: 'نوع محصول' },
+};
+
+/**
+ * Re-derive the sub-group from whatever the code field holds now, and show it.
+ *
+ * When the goods code names exactly one family the field is read-only, like the
+ * other reference codes. When its Excel code is shared by two families the
+ * operator has to pick, so a select appears listing only those candidates.
+ */
+function refreshSecondGroup() {
+  const view = $('g_secondGroupCodeRef_view');
+  const pick = $('g_secondGroupCodeRef_pick');
+  const hidden = $('g_secondGroupCodeRef');
+  const code = gVal('g_code');
+  if (!code) {
+    pick.classList.add('hidden');
+    hidden.value = '';
+    view.textContent = '— کد کالا را وارد کنید —';
+    view.classList.remove('bad');
+    return;
+  }
+  const sub = SecondGroup.resolve(code);
+  if (sub.status === 'ambiguous') {
+    view.textContent = `کد اکسل «${sub.excel}» مشترک است — یکی را انتخاب کنید:`;
+    view.classList.remove('bad');
+    pick.classList.remove('hidden');
+    // Rebuild only when the candidates changed, so a choice survives retyping.
+    const want = sub.matches.map((m) => m.orash).join(',');
+    if (pick.dataset.candidates !== want) {
+      pick.dataset.candidates = want;
+      pick.innerHTML = '';
+      for (const m of sub.matches) {
+        const o = document.createElement('option');
+        o.value = String(m.orash);
+        o.textContent = `${m.name} — ${m.orash}`;
+        pick.appendChild(o);
+      }
+      pick.value = String(sub.matches[0].orash);   // never leave it unset
+    }
+    hidden.value = pick.value;
+    return;
+  }
+  pick.classList.add('hidden');
+  pick.dataset.candidates = '';
+  if (sub.status === 'ok') {
+    hidden.value = String(sub.code);
+    view.textContent = `${sub.code} — ${sub.matches[0].name}`;
+    view.classList.remove('bad');
+  } else {
+    hidden.value = '';
+    view.textContent = sub.message;
+    view.classList.add('bad');
+  }
+}
+
+// ---------- settings: the sub-group table ----------
+
+/**
+ * The editable copy of the sub-group table.
+ *
+ * It is edited as plain rows and only becomes the table in force once the
+ * server has accepted it — validation lives in second-group.js so the browser
+ * and the server agree on what a legal table is.
+ */
+const sgEdit = { rows: [], savedAt: null, source: 'default' };
+
+function sgSetStatus(text, kind) {
+  const box = $('sgStatus');
+  box.className = 'status' + (kind ? ' ' + kind : '');
+  box.textContent = text;
+  box.classList.toggle('hidden', !text);
+}
+
+function renderSettingsTable() {
+  const body = document.querySelector('#sgTable tbody');
+  if (!body) return;
+  body.innerHTML = '';
+  sgEdit.rows.forEach((row, i) => {
+    const tr = document.createElement('tr');
+    const cell = (child) => { const td = document.createElement('td'); td.appendChild(child); tr.appendChild(td); return td; };
+
+    const name = document.createElement('input');
+    name.type = 'text'; name.value = row.name || ''; name.placeholder = 'نام محصول';
+    name.addEventListener('input', () => { sgEdit.rows[i].name = name.value; });
+    cell(name);
+
+    const excel = document.createElement('input');
+    excel.type = 'text'; excel.inputMode = 'numeric'; excel.maxLength = 2;
+    excel.value = row.excel == null ? '' : row.excel; excel.placeholder = '—';
+    excel.addEventListener('input', () => { sgEdit.rows[i].excel = excel.value; });
+    cell(excel).className = 'narrow';
+
+    const orash = document.createElement('input');
+    orash.type = 'number'; orash.min = '1';
+    orash.value = row.orash == null ? '' : row.orash;
+    orash.addEventListener('input', () => { sgEdit.rows[i].orash = orash.value; });
+    cell(orash).className = 'narrow';
+
+    const del = document.createElement('button');
+    del.type = 'button'; del.className = 'ghost danger'; del.textContent = 'حذف';
+    del.title = 'حذف این ردیف';
+    del.addEventListener('click', () => { sgEdit.rows.splice(i, 1); renderSettingsTable(); });
+    cell(del).className = 'narrow';
+
+    body.appendChild(tr);
+  });
+  setPill($('sgState'), `${sgEdit.rows.length} ردیف` + (sgEdit.source === 'file' ? ' — ذخیره‌شده' : ' — جدول اولیه'), 'ok');
+}
+
+/** Take the server's table as the one in force, and show it. */
+function sgAdopt(payload) {
+  sgEdit.rows = payload.groups.map((g) => ({ ...g }));
+  sgEdit.savedAt = payload.savedAt || null;
+  sgEdit.source = payload.source || 'default';
+  SecondGroup.setGroups(payload.groups);
+  renderSettingsTable();
+  renderSubGroupTable();
+  refreshSecondGroup();
+}
+
+async function loadSettingsTable(quiet) {
+  try {
+    const res = await fetch('/settings/second-groups');
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'خطای نامشخص');
+    sgAdopt(json);
+    if (!quiet) sgSetStatus('جدول از سرور خوانده شد.', 'ok');
+  } catch (err) {
+    sgSetStatus('خواندن جدول از سرور ناموفق بود: ' + (err.message || err), 'bad');
+  }
+}
+
+async function saveSettingsTable() {
+  // Check here first so every problem is listed at once, rather than the one
+  // the server happens to hit first.
+  const { errors } = SecondGroup.validate(sgEdit.rows);
+  if (errors.length) { sgSetStatus(errors.join('\n'), 'bad'); return; }
+  sgSetStatus('در حال ذخیره…', 'busy');
+  try {
+    const res = await fetch('/settings/second-groups', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ groups: sgEdit.rows }),
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'خطای نامشخص');
+    sgAdopt(json);
+    sgSetStatus(`ذخیره شد — ${json.groups.length} ردیف. لیبل‌های بعدی از همین جدول استفاده می‌کنند.`, 'ok');
+  } catch (err) {
+    sgSetStatus('ذخیره ناموفق بود: ' + (err.message || err), 'bad');
+  }
+}
+
+/** The sub-group table, so the operator can see where a number came from. */
+function renderSubGroupTable() {
+  const body = document.querySelector('#subGroupTable tbody');
+  if (!body) return;
+  const shared = new Set();
+  const byExcel = {};
+  for (const g of SecondGroup.GROUPS) {
+    if (!g.excel) continue;
+    if (byExcel[g.excel]) shared.add(g.excel);
+    byExcel[g.excel] = true;
+  }
+  body.innerHTML = '';
+  for (const g of SecondGroup.GROUPS) {
+    const tr = document.createElement('tr');
+    if (g.excel && shared.has(g.excel)) tr.className = 'shared-excel';
+    for (const text of [g.name, g.excel || '—', String(g.orash)]) {
+      const td = document.createElement('td');
+      td.textContent = text;
+      tr.appendChild(td);
+    }
+    body.appendChild(tr);
+  }
+}
+
+/** Force the locked codes onto a record, whatever a scanned QR claimed. */
+function applyLockedGoodFields(data) {
+  for (const [field, { value }] of Object.entries(LOCKED_GOOD_FIELDS)) data[field] = value;
+  // The sub-group follows the goods code, not the QR: a label printed before
+  // the mapping existed carries no sub-group at all, and one printed with a
+  // stale mapping carries the wrong one.
+  const sub = SecondGroup.resolve(data.code || '');
+  if (sub.status === 'ok') data.secondGroupCodeRef = sub.code;
+  else delete data.secondGroupCodeRef;
+  return data;
+}
+
+/** Paint the locked codes into their read-only slots. */
+function showLockedGoodFields() {
+  for (const [field, { value, label }] of Object.entries(LOCKED_GOOD_FIELDS)) {
+    const el = $('g_' + field);
+    if (el) el.textContent = `${value} — ${label}`;
+  }
+}
+
 // Only the required fields for CreateGood on this deployment.
 function buildGoodPayload() {
   const data = {
@@ -602,10 +808,10 @@ function buildGoodPayload() {
     name: gVal('g_name'),
     type: Number($('g_type').value),
     serial: gVal('g_serial'),
-    unitIdRef: gNum('g_unitIdRef'),
-    unitPackingCodeRef: gNum('g_unitPackingCodeRef'),
-    mainGroupCodeRef: gNum('g_mainGroupCodeRef'),
-    secondGroupCodeRef: gNum('g_secondGroupCodeRef'),
+    unitIdRef: LOCKED_GOOD_FIELDS.unitIdRef.value,
+    unitPackingCodeRef: LOCKED_GOOD_FIELDS.unitPackingCodeRef.value,
+    mainGroupCodeRef: LOCKED_GOOD_FIELDS.mainGroupCodeRef.value,
+    secondGroupCodeRef: gNum('g_secondGroupCodeRef'),   // set by refreshSecondGroup()
     isActive: true,
   };
   return { uniqueID: uniqueID(), data };
@@ -627,7 +833,9 @@ function validateGood(payload) {
   if (d.unitIdRef === undefined) errs.push('کد واحد شمارش (unitIdRef) الزامی است');
   if (d.unitPackingCodeRef === undefined) errs.push('کد نوع بسته‌بندی (unitPackingCodeRef) الزامی است');
   if (d.mainGroupCodeRef === undefined) errs.push('کد گروه اصلی الزامی است');
-  if (d.secondGroupCodeRef === undefined) errs.push('کد گروه فرعی الزامی است');
+  if (d.secondGroupCodeRef === undefined) {
+    errs.push('گروه فرعی از کد کالا به دست نیامد: ' + SecondGroup.resolve(d.code || '').message);
+  }
   return errs;
 }
 
@@ -683,9 +891,10 @@ async function submitGood() {
 
 // Form <-> plain data object, so a scan can prefill the form and the form can
 // supply defaults for fields a QR code omits.
+// The locked codes are absent on purpose: a scanned QR must not be able to
+// change them either, so nothing ever writes them back into the form.
 const GOOD_FIELD_INPUTS = {
-  code: 'g_code', name: 'g_name', serial: 'g_serial', unitIdRef: 'g_unitIdRef',
-  unitPackingCodeRef: 'g_unitPackingCodeRef', mainGroupCodeRef: 'g_mainGroupCodeRef',
+  code: 'g_code', name: 'g_name', serial: 'g_serial',
   secondGroupCodeRef: 'g_secondGroupCodeRef',
 };
 
@@ -701,11 +910,8 @@ function applyGoodToForm(data) {
   for (const [field, id] of Object.entries(GOOD_FIELD_INPUTS)) {
     if (data[field] !== undefined && data[field] !== '') $(id).value = data[field];
   }
-  for (const [field, id] of Object.entries(GOOD_FIELD_INPUTS)) {
-    const ref = CODE_REF_FIELDS.find((f) => f.input === id);
-    if (ref && data[field] !== undefined && data[field] !== '') selectRefValue(ref, data[field]);
-  }
   if (data.type === 1 || data.type === 2) $('g_type').value = String(data.type);
+  refreshSecondGroup();
 }
 
 async function loadGoodsReference() {
@@ -729,15 +935,16 @@ async function loadGoodsReference() {
  * four, keeping any *Code/*Id sibling the response happens to carry next to the
  * name — that pairing is the only way to learn which number means "قرقره".
  */
-const CODE_REF_FIELDS = [
-  { input: 'g_unitIdRef', title: 'واحد شمارش (unitIdRef)',
-    nameKeys: ['unitsName', 'unitName'], codeKeys: ['unitIdRef', 'unitId', 'unitCode'] },
-  { input: 'g_unitPackingCodeRef', title: 'نوع بسته‌بندی (unitPackingCodeRef)',
-    nameKeys: ['unitPackingName'], codeKeys: ['unitPackingCodeRef', 'unitPackingCode'] },
-  { input: 'g_mainGroupCodeRef', title: 'گروه اصلی (mainGroupCodeRef)',
-    nameKeys: ['mainGroupName'], codeKeys: ['mainGroupCodeRef', 'mainGroupCode'] },
-  { input: 'g_secondGroupCodeRef', title: 'گروه فرعی (secondGroupCodeRef)',
+/** Reference values worth listing even where the panel no longer offers a choice. */
+const CODE_REF_REPORT_ONLY = [
+  { title: 'گروه فرعی (secondGroupCodeRef) — از کد کالا',
     nameKeys: ['secondGroupName'], codeKeys: ['secondGroupCodeRef', 'secondGroupCode'] },
+  { title: 'واحد شمارش (unitIdRef) — قفل‌شده',
+    nameKeys: ['unitsName', 'unitName'], codeKeys: ['unitIdRef', 'unitId', 'unitCode'] },
+  { title: 'نوع بسته‌بندی (unitPackingCodeRef) — قفل‌شده',
+    nameKeys: ['unitPackingName'], codeKeys: ['unitPackingCodeRef', 'unitPackingCode'] },
+  { title: 'گروه اصلی (mainGroupCodeRef) — قفل‌شده',
+    nameKeys: ['mainGroupName'], codeKeys: ['mainGroupCodeRef', 'mainGroupCode'] },
 ];
 
 /**
@@ -777,57 +984,8 @@ function collectRefValues(rows, field) {
     .map(([name, codes]) => ({ name, codes: [...codes] }));
 }
 
-/**
- * Fill one field's dropdown. A value whose code the response did not carry is
- * still listed, but disabled: picking a name we cannot turn into a number would
- * only send a wrong code to CreateGood.
- */
-function fillRefSelect(field, values) {
-  const sel = $(field.input + '_sel');
-  const input = $(field.input);
-  if (!sel) return;
-  const current = input.value;
-  sel.innerHTML = '';
-  const add = (value, label, disabled) => {
-    const o = document.createElement('option');
-    o.value = value; o.textContent = label; o.disabled = !!disabled;
-    sel.appendChild(o);
-    return o;
-  };
-  add('', values.length ? '— انتخاب کنید —' : '— سرویس مقداری برنگرداند —');
-  for (const v of values) {
-    if (v.codes.length === 1) add(String(v.codes[0]), `${v.codes[0]} — ${v.name}`);
-    else if (v.codes.length > 1) add('', `${v.name} — چند کد متفاوت: ${v.codes.join('، ')}`, true);
-    else add('', `${v.name} — کد نامعلوم (سرویس کد را برنمی‌گرداند)`, true);
-  }
-  add('__manual__', 'ورود دستی کد');
-  // Keep whatever the field already held: match it to an option, else manual.
-  if (current !== '') {
-    const hit = [...sel.options].find((o) => o.value === current);
-    sel.value = hit ? current : '__manual__';
-  }
-  syncRefInput(field);
-}
 
-/** The <input> is the single source of truth; the <select> only writes into it. */
-function syncRefInput(field) {
-  const sel = $(field.input + '_sel');
-  const input = $(field.input);
-  if (!sel) return;
-  const manual = sel.value === '__manual__';
-  input.classList.toggle('hidden', !manual && sel.value !== '');
-  if (!manual && sel.value !== '') input.value = sel.value;
-  if (!manual && sel.value === '') input.classList.remove('hidden');
-}
 
-/** Point a dropdown at a code that arrived from elsewhere (a scan, a saved default). */
-function selectRefValue(field, code) {
-  const sel = $(field.input + '_sel');
-  if (!sel) return;
-  const hit = [...sel.options].find((o) => o.value === String(code) && !o.disabled);
-  sel.value = hit ? String(code) : '__manual__';
-  syncRefInput(field);
-}
 
 /**
  * The reference codes CreateGood demands — unit, packing, main and second
@@ -865,13 +1023,12 @@ async function loadCodeReference() {
     const rows = goodsRowsFrom(goods.data);
     state.goods = rows;
     const summary = {};
-    for (const field of CODE_REF_FIELDS) {
-      const values = collectRefValues(rows, field);
-      fillRefSelect(field, values);
-      summary[field.title] = values.map((v) => (v.codes.length
-        ? { name: v.name, code: v.codes.length === 1 ? v.codes[0] : v.codes }
-        : { name: v.name, code: 'نامعلوم — پاسخ سرویس کد را برنمی‌گرداند' }));
-    }
+    const describe = (values) => values.map((v) => (v.codes.length
+      ? { name: v.name, code: v.codes.length === 1 ? v.codes[0] : v.codes }
+      : { name: v.name, code: 'نامعلوم — پاسخ سرویس کد را برنمی‌گرداند' }));
+    // Listed but not offered: these three are fixed in code. Seeing what the
+    // database actually uses is still how we would notice a wrong constant.
+    for (const field of CODE_REF_REPORT_ONLY) summary[field.title] = describe(collectRefValues(rows, field));
     // An empty list is almost always a field-name mismatch, not an empty
     // database — so show what the row actually had, instead of just "—".
     const empty = Object.entries(summary).filter(([, v]) => !v.length).map(([k]) => k);
@@ -940,13 +1097,31 @@ window.addEventListener('DOMContentLoaded', async () => {
   document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
 
   // CreateGood handlers
+  showLockedGoodFields();
+  renderSubGroupTable();
+  refreshSecondGroup();
+  loadSettingsTable(true);
+  $('sgAdd').addEventListener('click', () => {
+    sgEdit.rows.push({ name: '', excel: '', orash: '' });
+    renderSettingsTable();
+    sgSetStatus('ردیف تازه اضافه شد؛ برای اعمال، «ذخیره» را بزنید.', '');
+  });
+  $('sgSave').addEventListener('click', saveSettingsTable);
+  $('sgReload').addEventListener('click', () => loadSettingsTable(false));
+  $('sgReset').addEventListener('click', () => {
+    if (!confirm('جدول به همان چیزی که اول تحویل داده شده برمی‌گردد. ادامه می‌دهید؟')) return;
+    sgEdit.rows = SecondGroup.GROUPS.map((g) => ({ ...g }));
+    renderSettingsTable();
+    sgSetStatus('جدول اولیه بازگردانده شد — هنوز ذخیره نشده.', '');
+  });
+
+  $('g_code').addEventListener('input', refreshSecondGroup);
+  $('g_secondGroupCodeRef_pick').addEventListener('change', () => {
+    $('g_secondGroupCodeRef').value = $('g_secondGroupCodeRef_pick').value;
+  });
   $('btnSubmitGood').addEventListener('click', submitGood);
   $('btnLoadGoodsRef').addEventListener('click', loadGoodsReference);
   $('btnLoadCodeRef').addEventListener('click', loadCodeReference);
-  for (const field of CODE_REF_FIELDS) {
-    const sel = $(field.input + '_sel');
-    if (sel) sel.addEventListener('change', () => syncRefInput(field));
-  }
   $('btnPreviewGood').addEventListener('click', () => {
     $('goodPreviewJson').textContent = JSON.stringify(buildGoodPayload(), null, 2);
     $('goodPreviewWrap').classList.remove('hidden');

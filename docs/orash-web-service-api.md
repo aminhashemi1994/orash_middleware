@@ -318,7 +318,7 @@ Doc bug: the "input values" table for this endpoint only lists `uniqueID` + `tok
 | `data.fiPrice3` | no | decimal | sale price 3 |
 | `data.offPercent3` | no | decimal | discount % 3 |
 | `data.saleName` | no | string | sale title |
-| `data.unitPackingCodeRef` | no | long | packing unit code |
+| `data.unitPackingCodeRef` | no | long | packing unit code — **verified live**: binds to `Nullable<Int64>`, so a numeric id, and `null` is accepted. A numeric *string* (`"7"`) is also accepted; a non-numeric string is rejected with `400` |
 | `data.taxPercent` | no | decimal | tax % |
 | `data.lengthValue` | no | decimal | length |
 | `data.widthValue` | no | decimal | width |
@@ -433,6 +433,15 @@ Sale price list:
 ```
 
 The PDF does not document the response schema for this endpoint — only request bodies. Response fields have to be discovered from a live call or Swagger.
+
+**Types confirmed live for `CreateGood`, 2026-08-27.** Probed with a `uniqueID` that
+matches no database, so the model binder's verdict is observed while the controller
+can never reach a real one (it fails with `Sequence contains no elements`; nothing is
+written). `unitIdRef`, `mainGroupCodeRef`, `secondGroupCodeRef` and
+`unitPackingCodeRef` all bind to `Nullable<Int64>` — numeric ids, not strings — and
+`name` binds to `String` (a number is rejected). As with `GetGoods`, a binding
+failure is misreported against the parameter name: `{"good":["The good field is
+required."]}` alongside the real `$.data.<field>` error.
 
 **Checked against the live host (192.168.3.210:5000) with a real prod account, 2026-08-27 — this endpoint is currently broken server-side:**
 

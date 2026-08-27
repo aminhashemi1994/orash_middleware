@@ -196,7 +196,9 @@
 
     const defaults = goodFormDefaults();
     for (const record of parsed.records) {
-      const data = ScanCore.withDefaults(record.data, defaults);
+      // The locked codes win over anything the QR carried: a label printed
+      // before they changed must not register a good with the old values.
+      const data = applyLockedGoodFields(ScanCore.withDefaults(record.data, defaults));
       const errs = ScanCore.validate(data);
       const item = {
         id: ++scan.seq,
