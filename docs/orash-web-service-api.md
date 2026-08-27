@@ -434,6 +434,26 @@ Sale price list:
 
 The PDF does not document the response schema for this endpoint — only request bodies. Response fields have to be discovered from a live call or Swagger.
 
+**`CreateGood` validation order, and the packing codes that exist — measured on
+production, 2026-08-27.** The checks run in this order, each stopping the request:
+
+    unit → main group → second group → duplicate code → duplicate name
+      → packing → category → pattern → …  → create
+
+Order matters for probing: a field checked *after* the one under test can be
+given a value that does not exist, and the request is then rejected without
+creating anything while still reporting how far it got. `goodCategoryIdRef: 8123`
+(«کد طبقه بندي صحيح نيست») is the guard that sits just after the packing check.
+
+Sweeping `unitPackingCodeRef` 1..60 behind that guard — 60 requests, nothing
+created — the service accepts **2 through 37** and rejects 1 and 4. So 36 packing
+types are defined, and `1` (which this project first assumed meant «کلاف») is not
+one of them. The API returns codes only, never names, so which of the 36 is
+«کلاف» has to come from the Orash desktop application.
+
+A numeric string is not a workaround: `"1"` and `"01"` bind to the same `Int64`
+1 and draw the same rejection.
+
 **`CreateGood` truncates a 21-digit goods code — confirmed on production,
 2026-08-27.** A good registered through this API with `code`
 `112420000031506404071` (21 digits) was stored as `11242000003150640407`
