@@ -31,7 +31,17 @@
     'criterionDimensions',
   ]);
   const BOOLEAN = new Set(['isActive', 'isAdded', 'isBuyAdded', 'serialsControl']);
-  const STRING = new Set(['code', 'name', 'serial', 'saleName', 'nationalCode']);
+  const STRING = new Set(['code', 'name', 'serial', 'saleName', 'nationalCode', 'mode']);
+
+  /**
+   * Fields that are ours, not the service's. They travel in the QR to tell this
+   * system how to fill in the rest, and are stripped before anything is sent to
+   * Orash — `CreateGood` has no such member and never will.
+   */
+  const LOCAL = new Set(['mode']);
+
+  /** The QR was written by the label sheet; more modes will follow. */
+  const MODES = { LABEL: 'L' };
 
   const KNOWN = new Set([...NUMERIC, ...BOOLEAN, ...STRING]);
 
@@ -100,8 +110,11 @@
     serialscontrol: 'serialsControl',
     goodcategoryidref: 'goodCategoryIdRef', category: 'goodCategoryIdRef',
     patternidref: 'patternIdRef', pattern: 'patternIdRef',
+    mode: 'mode', m: 'mode',
     lengthvalue: 'lengthValue', length: 'lengthValue',
     'طول': 'lengthValue',                        // طول
+    'متراژ': 'lengthValue',                      // متراژ
+    'متر': 'lengthValue',                        // متر
     widthvalue: 'widthValue', width: 'widthValue',
     'عرض': 'widthValue',                         // عرض
     heightvalue: 'heightValue', height: 'heightValue',
@@ -399,10 +412,21 @@
     catch { return null; }
   }
 
+  /**
+   * The payload as the service should see it: everything local to this system
+   * removed. Called at the moment of sending, so the queue keeps the full
+   * record while Orash gets only its own fields.
+   */
+  function forService(data) {
+    const out = {};
+    for (const [k, v] of Object.entries(data || {})) if (!LOCAL.has(k)) out[k] = v;
+    return out;
+  }
+
   const api = {
     parse, canonicalize, withDefaults, validate, looksTruncated, decodeScan,
     normalizeKey, toAsciiDigits, repairMojibake,
-    KNOWN, NUMERIC, BOOLEAN, STRING,
+    KNOWN, NUMERIC, BOOLEAN, STRING, LOCAL, MODES, forService,
   };
   if (typeof module === 'object' && module.exports) module.exports = api;
   global.ScanCore = api;

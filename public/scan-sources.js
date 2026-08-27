@@ -371,9 +371,23 @@
     },
 
     async _decodeOnce() {
+      // Nothing to read until the camera has actually produced a frame. Asking
+      // either decoder before that throws on some Android builds.
+      if (!this.video || !this.video.videoWidth) return null;
+
       if (this._detector) {
-        const codes = await this._detector.detect(this.video);
-        return codes.length ? codes[0].rawValue : null;
+        try {
+          const codes = await this._detector.detect(this.video);
+          return codes.length ? codes[0].rawValue : null;
+        } catch (err) {
+          // BarcodeDetector can be *present* and still fail at runtime — on
+          // Android its barcode module is downloaded on demand, and until it
+          // arrives every detect() throws. Without this fallback the camera
+          // looked alive but never read anything.
+          this._detector = null;
+          if (typeof global.jsQR !== 'function') throw err;
+          this.emit('status', { state: 'connected', detail: 'دوربین روشن است (jsQR)' });
+        }
       }
       const img = this._frameToImageData();
       if (!img) return null;
@@ -391,7 +405,14 @@
             this.emit('hit', { text });
           }
         })
-        .catch((err) => this.emit('status', { state: 'error', detail: err.message }))
+        .catch((err) => {
+          // One message per distinct fault: a decoder that throws on every
+          // frame would otherwise repaint the status line ten times a second.
+          if (this._lastError !== err.message) {
+            this._lastError = err.message;
+            this.emit('status', { state: 'error', detail: err.message });
+          }
+        })
         .finally(next);
     },
 

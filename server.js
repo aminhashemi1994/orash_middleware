@@ -412,7 +412,10 @@ async function handleRequest(req, res) {
       const q = url.searchParams;
       let label;
       try {
-        label = labelQr.buildLabel({ code: q.get('code'), serial: q.get('serial'), name: q.get('name') });
+        label = labelQr.buildLabel({
+          code: q.get('code'), serial: q.get('serial'), name: q.get('name'),
+          lengthValue: q.get('lengthValue'),
+        });
       } catch (err) {
         // Plain text, not JSON: VBA reads the body straight into a MsgBox.
         // Two kinds of refusal reach here: empty cells, and a goods code whose

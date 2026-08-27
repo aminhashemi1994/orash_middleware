@@ -79,11 +79,11 @@
         </svg>
         <span>کالا و خدمات</span>
       </button>
-      <button class="tab" data-tab="invoice">
+      <button class="tab" data-tab="settings">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>
+          <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
         </svg>
-        <span>فاکتور</span>
+        <span>تنظیمات</span>
       </button>
     </nav>
 
@@ -193,7 +193,6 @@
           <p>هنوز چیزی اسکن نشده است</p>
           <span>یک QR بخوانید تا اینجا ظاهر شود</span>
         </div>
-        <details id="scanRawWrap" class="hidden"><summary>داده خام اسکن</summary><pre id="scanRawJson"></pre></details>
       </section>
 
       <!-- ============ register a good ============ -->
@@ -212,6 +211,9 @@
           </label>
           <label><span class="lbl-row">سریال</span>
             <input id="g_serial" type="text" placeholder="مثلاً: 123 یا 123-a" />
+          </label>
+          <label><span class="lbl-row">متراژ <em>متر</em></span>
+            <input id="g_lengthValue" type="number" min="0" step="0.01" placeholder="مثلاً: 250" />
           </label>
           <label><span class="lbl-row">نوع</span>
             <select id="g_type">
@@ -240,32 +242,8 @@
 
         <div class="row">
           <button id="btnSubmitGood" class="primary" disabled>ثبت کالا</button>
-          <button id="btnPreviewGood" class="ghost">پیش‌نمایش JSON</button>
         </div>
         <div id="goodStatus" class="status hidden"></div>
-        <details id="goodPreviewWrap" class="hidden"><summary>بدنه درخواست</summary><pre id="goodPreviewJson"></pre></details>
-
-        <details class="tools">
-          <summary>ابزار بررسی</summary>
-          <div class="row">
-            <button id="btnLoadGoodsRef" class="ghost" disabled>کالاهای موجود</button>
-            <button id="btnLoadCodeRef" class="ghost" disabled>مقادیر مرجع سرویس</button>
-          </div>
-          <details id="goodsRefWrap" class="hidden"><summary>کالاهای موجود</summary><pre id="goodsRefJson">—</pre></details>
-          <details id="codeRefWrap" class="hidden">
-            <summary>مقادیر مرجع دیده‌شده در کالاهای موجود</summary>
-            <p class="hint">سرویس اوراش endpoint فهرست‌کردنی برای این کدها ندارد؛ این فهرست از روی کالاهای ثبت‌شده ساخته می‌شود و فقط مقادیرِ در حال استفاده را نشان می‌دهد.</p>
-            <pre id="codeRefJson">—</pre>
-          </details>
-          <details id="subGroupTableWrap">
-            <summary>جدول گروه فرعی</summary>
-            <p class="hint">رقم دوم و سوم کد کالا، کد اکسل خانواده‌ی کابل است؛ ستون سوم شناسه‌ای است که به اوراش فرستاده می‌شود.</p>
-            <div class="table-scroll"><table id="subGroupTable" class="ref-table">
-              <thead><tr><th>نام گروه</th><th>کد اکسل</th><th>شناسه اوراش</th></tr></thead>
-              <tbody></tbody>
-            </table></div>
-          </details>
-        </details>
       </section>
 
       <!-- ============ scan sources ============ -->
@@ -362,19 +340,12 @@
         <!-- manual -->
         <article class="tile tile-wide">
           <div class="tile-head">
-            <h2>ورود دستی / ساخت نمونه</h2>
+            <h2>ورود دستی</h2>
           </div>
+          <p class="hint">وقتی بارکدخوان در دسترس نیست: کد ۲۱ رقمی کالا را اینجا بگذارید.</p>
           <div class="tile-foot">
-            <input id="manualInput" type="text" placeholder='{"code":"71010","name":"کابل","type":1}' />
+            <input id="manualInput" type="text" placeholder="112420000031506404071" />
             <button id="btnManualScan" class="ghost">پردازش</button>
-            <button id="btnSampleQr" class="ghost">ساخت QR نمونه</button>
-          </div>
-          <div id="sampleWrap" class="pair hidden">
-            <canvas id="sampleQr"></canvas>
-            <div class="pair-info">
-              <p>این QR را اسکن کنید تا کل مسیر آزمایش شود. <span id="sampleHint" class="hint"></span></p>
-              <pre id="sampleJson"></pre>
-            </div>
           </div>
         </article>
         </section>
@@ -405,6 +376,32 @@
           <span class="hint">با خروج، توکن پاک می‌شود و تا ورود بعدی هیچ اسکنی ثبت نمی‌شود.</span>
         </div>
       </section>
+      <details class="panel diag">
+        <summary>عیب‌یابی</summary>
+        <p class="hint">برای وقتی چیزی درست کار نمی‌کند. در کار روزمره لازم نیست.</p>
+        <div class="row">
+          <button id="btnPreviewGood" class="ghost">بدنه‌ی درخواست ثبت کالا</button>
+          <button id="btnLoadGoodsRef" class="ghost" disabled>کالاهای موجود</button>
+          <button id="btnLoadCodeRef" class="ghost" disabled>مقادیر مرجع سرویس</button>
+        </div>
+        <details id="goodPreviewWrap" class="hidden"><summary>بدنه درخواست</summary><pre id="goodPreviewJson"></pre></details>
+        <details id="goodsRefWrap" class="hidden"><summary>کالاهای موجود</summary><pre id="goodsRefJson">—</pre></details>
+        <details id="codeRefWrap" class="hidden"><summary>مقادیر مرجع سرویس</summary><pre id="codeRefJson">—</pre></details>
+        <details id="scanRawWrap" class="hidden"><summary>داده خام آخرین اسکن</summary><pre id="scanRawJson"></pre></details>
+        <details><summary>پاسخ خام آخرین درخواست</summary><pre id="rawResponse">—</pre></details>
+      </details>
+    </div>
+
+    <!-- ===================== TAB: CreateInvoice ===================== -->
+    <!-- ===================== TAB: settings ===================== -->
+    <div id="tab-settings" class="tabpanel hidden">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">تنظیمات</p>
+          <h1>ورودی‌های اکسل</h1>
+          <p class="lede">جدولی که رقم دوم و سوم کد ۲۱ رقمی را به گروه فرعی اوراش ترجمه می‌کند.</p>
+        </div>
+      </header>
       <section class="panel">
         <div class="section-head">
           <h2>تنظیمات گروه فرعی</h2>
@@ -424,79 +421,6 @@
           <button id="sgReset" class="ghost">بازگشت به جدول اولیه</button>
         </div>
         <div id="sgStatus" class="status hidden"></div>
-      </section>
-      <details class="panel"><summary>پاسخ خام آخرین درخواست</summary><pre id="rawResponse">—</pre></details>
-    </div>
-
-    <!-- ===================== TAB: CreateInvoice ===================== -->
-    <div id="tab-invoice" class="tabpanel hidden">
-      <header class="hero">
-        <div>
-          <p class="eyebrow">فاکتور</p>
-          <h1>ثبت فاکتور</h1>
-          <p class="lede">داده‌های پایه از سرویس خوانده می‌شوند، سپس سربرگ و ردیف‌ها را کامل کنید.</p>
-        </div>
-      </header>
-
-      <section class="panel">
-        <div class="section-head">
-          <h2>داده‌های دریافتی از سرویس</h2>
-          <span id="lookupState" class="pill">در انتظار ورود</span>
-        </div>
-        <div class="grid">
-          <label><span class="lbl-row">کاربر ایجادکننده</span><select id="createuser"><option value="">—</option></select></label>
-          <label><span class="lbl-row">شعبه (departmentCode) <em>الزامی</em></span><select id="departmentCode"><option value="">—</option></select></label>
-          <label><span class="lbl-row">انبار سربرگ (hsc) <em>الزامی</em></span><select id="hsc"><option value="">—</option></select></label>
-          <label><span class="lbl-row">حساب فرستنده (pc) <em>الزامی</em></span><select id="pc"><option value="">—</option></select></label>
-          <label><span class="lbl-row">تفصیلی ۲ (t2)</span><select id="t2"><option value="">— بدون تفصیلی —</option></select></label>
-        </div>
-        <div class="row"><button id="btnLoadLookups" class="primary" disabled>بارگذاری داده‌ها</button></div>
-      </section>
-
-      <section class="panel">
-        <div class="section-head"><h2>سربرگ فاکتور</h2></div>
-        <div class="grid">
-          <label><span class="lbl-row">نوع فاکتور (ft) <em>الزامی</em></span>
-            <select id="ft">
-              <option value="0">۰ - فاکتور فروش</option>
-              <option value="1">۱ - پیش فاکتور</option>
-              <option value="2">۲ - فاکتور خرید</option>
-              <option value="3">۳ - برگشت از فروش</option>
-              <option value="4">۴ - برگشت از خرید</option>
-              <option value="5">۵ - موجودی اول دوره</option>
-              <option value="7">۷ - حواله انبار</option>
-              <option value="8">۸ - برگشت از حواله انبار</option>
-              <option value="11">۱۱ - رسید انبار</option>
-              <option value="12">۱۲ - برگشت از رسید انبار</option>
-              <option value="13">۱۳ - اصلاحیه موجودی</option>
-              <option value="14">۱۴ - سفارش کالا</option>
-              <option value="20">۲۰ - انتقال بین انبار</option>
-            </select>
-          </label>
-          <label><span class="lbl-row">تاریخ سند <em>الزامی</em></span><input id="createdate" type="text" placeholder="1403/09/11" /></label>
-          <label><span class="lbl-row">ساعت سند <em>الزامی</em></span><input id="createtime" type="text" placeholder="10:31" /></label>
-          <label><span class="lbl-row">شماره فاکتور کاربر</span><input id="factNo" type="text" placeholder="اختیاری" /></label>
-          <label><span class="lbl-row">کد ویزیتور</span><input id="visitorId" type="number" placeholder="اختیاری" /></label>
-          <label><span class="lbl-row">توضیحات سربرگ</span><input id="hde" type="text" placeholder="اختیاری" /></label>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="section-head"><h2>ردیف‌های کالا</h2>
-          <div class="section-actions"><button id="btnAddLine" class="ghost">+ افزودن ردیف</button></div>
-        </div>
-        <div class="table-wrap">
-          <table id="linesTable">
-            <thead><tr><th>کالا (gs)</th><th>تعداد (gc)</th><th>نرخ (fp)</th><th>انبار (itms)</th><th>توضیح</th><th></th></tr></thead>
-            <tbody id="linesBody"></tbody>
-          </table>
-        </div>
-        <div class="row">
-          <button id="btnSubmit" class="primary" disabled>ثبت فاکتور (CreateInvoice)</button>
-          <button id="btnPreview" class="ghost">پیش‌نمایش JSON</button>
-        </div>
-        <div id="statusArea" class="status hidden"></div>
-        <details id="previewWrap" class="hidden"><summary>بدنه درخواست</summary><pre id="previewJson"></pre></details>
       </section>
     </div>
   </main>

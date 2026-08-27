@@ -10,12 +10,15 @@ Dim mat() As Byte                           ' matrix of QR
 Private Const LQ_SHEET As String = "صدور"
 Private Const LQ_CELL_CODE As String = "Z3"
 Private Const LQ_CELL_SERIAL As String = "C4"
+Private Const LQ_CELL_LENGTH As String = "C7"      ' متراژ کابل
 Private Const LQ_CELLS_NAME As String = "C5,C6,D9"
 Private Const LQ_SEPARATOR As String = " "
+Private Const LQ_MODE As String = "L"          ' این QR از لیبل ساخته شده
 
-' The QR carries only what this sheet knows. The reference codes CreateGood
-' also needs — type, unit, packing, main and second group — are added by the
-' panel when the good is registered, so a label stays valid if they change.
+' The QR carries only what this sheet knows: code, name, serial and the
+' cable's length in metres. The reference codes CreateGood also needs — type,
+' unit, packing, main and second group — are added by the panel when the good
+' is registered, so a label stays valid if those change.
 
 Private Sub CheckBox1_Click()
 End Sub
@@ -1429,19 +1432,44 @@ Public Function LabelPayloadJson() As String
     Dim ws As Worksheet
     Set ws = ThisWorkbook.Worksheets(LQ_SHEET)
 
-    Dim code As String, serial As String, goodName As String
+    Dim code As String, serial As String, goodName As String, lengthValue As String
     code = LQ_ToLatinDigits(LQ_CleanCell(ws.Range(LQ_CELL_CODE).Value))
     serial = LQ_ToLatinDigits(LQ_CleanCell(ws.Range(LQ_CELL_SERIAL).Value))
     goodName = LQ_JoinCells(ws, LQ_CELLS_NAME)
+    lengthValue = LQ_ToLatinDigits(LQ_CleanCell(ws.Range(LQ_CELL_LENGTH).Value))
 
     Dim out As String
     out = "{"
+    out = out & """mode"":" & LQ_JsonString(LQ_MODE) & ","
     out = out & """code"":" & LQ_JsonString(code) & ","
     out = out & """name"":" & LQ_JsonString(goodName) & ","
     out = out & """serial"":" & LQ_JsonString(serial)
+
+    ' A number, not a string: Orash's lengthValue is a decimal. An empty or
+    ' non-numeric cell is left out entirely rather than sent as 0.
+    If LQ_IsNumericText(lengthValue) Then
+        out = out & ",""lengthValue"":" & lengthValue
+    End If
+
     out = out & "}"
 
     LabelPayloadJson = out
+End Function
+
+' Is this text a plain decimal number we can write into JSON unquoted?
+Private Function LQ_IsNumericText(ByVal text As String) As Boolean
+    Dim i As Long, ch As String, dots As Long
+    If Len(text) = 0 Then Exit Function
+    For i = 1 To Len(text)
+        ch = Mid$(text, i, 1)
+        If ch = "." Then
+            dots = dots + 1
+            If dots > 1 Then Exit Function
+        ElseIf ch < "0" Or ch > "9" Then
+            Exit Function
+        End If
+    Next i
+    LQ_IsNumericText = True
 End Function
 
 ' A JSON string literal, ASCII only.

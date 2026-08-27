@@ -180,21 +180,28 @@ async function loadDatabases() {
   }
   $('btnLogin').disabled = false;
   $('loginStatus').classList.add('hidden');
-  const rows = rowsFrom(r.data);
+  const dbs = state.config?.databases || {};
+  // Only the production company is offered. The service also returns the test
+  // and template databases, but this panel is used against the real one, and an
+  // operator picking the wrong entry would register goods nowhere useful.
+  const rows = rowsFrom(r.data).filter((row) => row.uniqueID === dbs.prod);
   const sel = $('database');
   sel.innerHTML = '';
-  const ph = document.createElement('option');
-  ph.value = ''; ph.textContent = '— انتخاب کنید —'; sel.appendChild(ph);
-  const dbs = state.config?.databases || {};
+  if (!rows.length) {
+    // The service answered, but not with the database this panel is configured
+    // for — say so rather than show an empty box.
+    sel.innerHTML = '<option value="">— پایگاه داده تولید یافت نشد —</option>';
+    $('btnLogin').disabled = true;
+    setLoginState('پایگاه داده تولید در پاسخ سرویس نبود', 'bad');
+    markDatabaseBadge();
+    return;
+  }
   for (const row of rows) {
     const o = document.createElement('option');
     o.value = row.uniqueID;
-    let tag = '';
-    if (row.uniqueID === dbs.test) tag = ' [تست]';
-    else if (row.uniqueID === dbs.prod) tag = ' [تولید]';
-    o.textContent = `${row.companyName || row.name}${tag}`;
+    o.textContent = row.companyName || row.name;
+    o.selected = true;
     sel.appendChild(o);
-    if (row.uniqueID === dbs.test) o.selected = true; // default to test DB
   }
   setLoginState('وارد نشده', '');
   markDatabaseBadge();
@@ -288,7 +295,6 @@ function logout() {
   setPill($('sessionState'), 'خارج شد', 'bad');
   $('profileName').textContent = 'وارد نشده';
   setLoginState('وارد نشده', '');
-  $('btnLoadLookups').disabled = true;
   refreshSubmitEnabled();
 }
 
@@ -313,13 +319,10 @@ async function login() {
     state.token = content.token;
     state.userId = userOpt?.dataset.id ? Number(userOpt.dataset.id) : null;
     setLoginState('ورود موفق ✓ (' + (content.name || username) + ')', 'good');
-    $('btnLoadLookups').disabled = false;
-    setPill($('lookupState'), 'آماده بارگذاری', '');
     console.log('[login] success', { username, uniqueID: uid, name: content.name, userId: state.userId });
     $('loginStatus').classList.add('hidden');
     enterApp(content.name || username);
     refreshSubmitEnabled();          // unblock the forms before the slow part
-    await loadLookups();
   } else {
     state.token = null;
     // On failure the useful reason is in content (a string), while message is just "fail".
@@ -351,169 +354,11 @@ async function login() {
   refreshSubmitEnabled();
 }
 
-// ---------- lookups (service-provided data) ----------
+/** A read-only service call, wrapped in the envelope every lookup shares. */
 async function lookup(name, extraData = {}) {
   const body = { baseUrl: baseUrl(), token: state.token,
     body: { uniqueID: uniqueID(), data: { userId: state.userId, ...extraData } } };
   return callProxy(name, { method: 'POST', body });
-}
-
-async function loadLookups() {
-  if (!state.token) { alert('ابتدا وارد شوید.'); return; }
-  setPill($('lookupState'), 'در حال بارگذاری…', 'busy');
-  skeleton(true, 'departmentCode', 'hsc', 't2', 'pc', 'createuser');
-  try {
-    // createuser is the logged-in user
-    fillSelect($('createuser'), state.userId != null ? [{ id: state.userId, name: $('username').value }] : [],
-      ['id'], ['name'], { placeholder: '—' });
-    if (state.userId != null) $('createuser').selectedIndex = 1;
-
-    const [dep, sto, taf] = await Promise.all([
-      lookup('departments'),
-      lookup('storages'),
-      lookup('tafsili'),
-    ]);
-    fillSelect($('departmentCode'), rowsFrom(dep.data), ['departmentCode'], ['departmentName'], { placeholder: '— انتخاب —' });
-    fillSelect($('hsc'), rowsFrom(sto.data), ['storageCode'], ['storageName'], { placeholder: '— انتخاب —' });
-    fillSelect($('t2'), rowsFrom(taf.data), ['tafsiliCode'], ['tafsiliName'], { placeholder: '— بدون تفصیلی —' });
-
-    // Accounts (sender) — GetCustomer needs branch flags + current user
-    const cus = await lookup('customers', {
-      flagDepartment: false, fromDepartment: 0, toDepartment: 0, currentUserId: state.userId,
-    });
-    fillSelect($('pc'), rowsFrom(cus.data), ['code'], ['name'], { placeholder: '— انتخاب حساب —' });
-
-    // Goods — cache for line-item dropdowns
-    const goods = await lookup('goods', {
-      // Types the live service actually enforces — not the PDF's: showStockFlg
-      // binds to Int64 and rejects a boolean outright (HTTP 400). See
-      // docs/orash-web-service-api.md §5.2.
-      showStockFlg: 0, flagDepartment: true, fromDepartment: 0, toDepartment: 0,
-      currentUserId: state.userId, withFi: false,
-    });
-    state.goods = goodsRowsFrom(goods.data);
-
-    // (re)build any existing line rows so their goods dropdown fills
-    document.querySelectorAll('#linesBody tr').forEach(fillGoodsSelectInRow);
-    if (!$('linesBody').children.length) addLine();
-
-    const counts = `شعبه:${rowsFrom(dep.data).length} انبار:${rowsFrom(sto.data).length} حساب:${rowsFrom(cus.data).length} تفصیلی:${rowsFrom(taf.data).length} کالا:${state.goods.length}`;
-    setPill($('lookupState'), 'بارگذاری شد ✓ (' + counts + ')', 'good');
-    showRaw({ note: 'lookups loaded', departments: dep.data, storages: sto.data, tafsili: taf.data, customers: cus.data, goods: goods.data });
-  } catch (e) {
-    setPill($('lookupState'), 'خطا: ' + e.message, 'bad');
-  } finally {
-    skeleton(false, 'departmentCode', 'hsc', 't2', 'pc', 'createuser');
-  }
-  refreshSubmitEnabled();
-}
-
-// ---------- line items ----------
-function storageOptionsHtml() {
-  let html = '<option value="">— انبار ردیف —</option>';
-  for (const o of $('hsc').options) {
-    if (!o.value) continue;
-    html += `<option value="${o.value}">${o.textContent}</option>`;
-  }
-  return html;
-}
-
-function fillGoodsSelectInRow(tr) {
-  const sel = tr.querySelector('.gs');
-  const current = sel.value;
-  sel.innerHTML = '<option value="">— انتخاب کالا —</option>';
-  for (const g of state.goods) {
-    const code = g.code ?? g.goodCode ?? g.Code;
-    const name = g.name ?? g.goodName ?? g.Name ?? code;
-    const o = document.createElement('option');
-    o.value = code;
-    o.textContent = `${name} (${code})`;
-    o.dataset.row = JSON.stringify(g);
-    sel.appendChild(o);
-  }
-  if (current) sel.value = current;
-}
-
-function addLine() {
-  const tr = document.createElement('tr');
-  tr.innerHTML = `
-    <td><select class="gs"><option value="">— ابتدا داده‌ها را بارگذاری کنید —</option></select></td>
-    <td><input class="gc" type="number" min="0" step="any" placeholder="تعداد" /></td>
-    <td><input class="fp" type="number" min="0" step="any" placeholder="نرخ" /></td>
-    <td><select class="itms">${storageOptionsHtml()}</select></td>
-    <td><input class="ide" type="text" placeholder="اختیاری" /></td>
-    <td><button class="del ghost" title="حذف">✕</button></td>`;
-  tr.querySelector('.del').addEventListener('click', () => tr.remove());
-  // default row storage to header storage
-  const itms = tr.querySelector('.itms');
-  if ($('hsc').value) itms.value = $('hsc').value;
-  $('linesBody').appendChild(tr);
-  if (state.goods.length) fillGoodsSelectInRow(tr);
-}
-
-// ---------- build payload ----------
-function buildPayload() {
-  const hid = 'h' + Date.now();
-  const lines = [];
-  document.querySelectorAll('#linesBody tr').forEach((tr, i) => {
-    const gs = tr.querySelector('.gs').value;
-    const gc = tr.querySelector('.gc').value;
-    const fp = tr.querySelector('.fp').value;
-    if (!gs && !gc && !fp) return; // skip empty rows
-    lines.push({
-      hid,
-      iid: String(i + 1),
-      gs: String(gs),
-      gc: String(gc),
-      fp: String(fp),
-      ide: tr.querySelector('.ide').value || '',
-      itms: String(tr.querySelector('.itms').value || $('hsc').value || ''),
-    });
-  });
-
-  const header = {
-    hid,
-    pc: $('pc').value,
-    hde: $('hde').value || '',
-    ft: $('ft').value,
-    hsc: $('hsc').value,
-    fd: lines,
-  };
-  const t2 = $('t2').value;
-  if (t2) header.t2 = t2;
-
-  const data = {
-    createuser: state.userId,
-    createdate: $('createdate').value.trim(),
-    createtime: $('createtime').value.trim(),
-    departmentCode: Number($('departmentCode').value) || 0,
-    value: [header],
-  };
-  if ($('visitorId').value) data.visitorId = Number($('visitorId').value);
-  if ($('factNo').value) data.factNo = $('factNo').value.trim();
-
-  return { uniqueID: uniqueID(), data };
-}
-
-function validate(payload) {
-  const errs = [];
-  const d = payload.data;
-  if (!payload.uniqueID) errs.push('پایگاه داده انتخاب نشده');
-  if (d.createuser == null) errs.push('کاربر ایجادکننده مشخص نیست (ورود کنید)');
-  if (!d.createdate) errs.push('تاریخ سند خالی است');
-  if (!d.createtime) errs.push('ساعت سند خالی است');
-  if (!d.departmentCode) errs.push('شعبه انتخاب نشده');
-  const h = d.value[0];
-  if (!h.pc) errs.push('حساب فرستنده (pc) انتخاب نشده');
-  if (!h.hsc) errs.push('انبار سربرگ (hsc) انتخاب نشده');
-  if (h.ft === '' || h.ft == null) errs.push('نوع فاکتور مشخص نیست');
-  if (!h.fd.length) errs.push('حداقل یک ردیف کالا لازم است');
-  h.fd.forEach((l, i) => {
-    if (!l.gs) errs.push(`ردیف ${i + 1}: کالا انتخاب نشده`);
-    if (!l.gc) errs.push(`ردیف ${i + 1}: تعداد خالی است`);
-    if (!l.itms) errs.push(`ردیف ${i + 1}: انبار خالی است`);
-  });
-  return errs;
 }
 
 // ---------- submit + status ----------
@@ -521,12 +366,8 @@ function refreshSubmitEnabled() {
   const noWrite = prodWriteBlocked();
   const blocked = !state.token || noWrite;
   const title = noWrite ? 'ثبت روی پایگاه تولید مسدود است' : (!state.token ? 'ابتدا وارد شوید' : '');
-  for (const id of ['btnSubmit', 'btnSubmitGood']) {
-    const b = $(id);
-    if (!b) continue;
-    b.disabled = blocked;
-    b.title = title;
-  }
+  const b = $('btnSubmitGood');
+  if (b) { b.disabled = blocked; b.title = title; }
   for (const id of ['btnLoadGoodsRef', 'btnLoadCodeRef']) {
     const ref = $(id);
     if (ref) ref.disabled = !state.token;
@@ -557,35 +398,6 @@ function interpret(r) {
     || (item.errorCode !== undefined && Number(item.errorCode) !== 0);
   const httpOk = r.upstreamStatus >= 200 && r.upstreamStatus < 300;
   return { data, items, item, httpLine, ok: !failed && httpOk };
-}
-
-async function submit() {
-  const payload = buildPayload();
-  const errs = validate(payload);
-  if (errs.length) {
-    showStatus('statusArea', 'bad', 'اعتبارسنجی ناموفق', '<ul><li>' + errs.join('</li><li>') + '</li></ul>');
-    return;
-  }
-  showStatus('statusArea', 'busy', 'در حال ارسال…', '');
-  const r = await withSpinner('btnSubmit', 'در حال ارسال…', () => callProxy('createInvoice', {
-    method: 'POST',
-    body: { baseUrl: baseUrl(), token: state.token, uniqueID: payload.uniqueID, body: payload },
-  }));
-  showRaw(r);
-
-  if (r.httpStatus === 403) { showStatus('statusArea', 'bad', 'مسدود شد', `<p>${r.error}</p>`); return; }
-  if (!r.ok) { showStatus('statusArea', 'bad', 'خطای شبکه/پروکسی', `<p>${r.error || ''}</p>`); return; }
-
-  const res = interpret(r);
-  if (res.ok) {
-    showStatus('statusArea', 'good', 'موفق ✓ — فاکتور ثبت شد',
-      `<p>کد/شماره: <b>${res.item.content ?? '—'}</b></p><p>${res.item.errorMessage || res.data.message || ''}</p><p class="mono">${res.httpLine}</p>`);
-  } else {
-    const msgs = res.items.length
-      ? '<ul><li>' + res.items.map((it) => `[${it.errorCode}] ${it.errorMessage}`).join('</li><li>') + '</li></ul>'
-      : `<p>${res.data.message || 'خطای نامشخص'}</p>`;
-    showStatus('statusArea', 'bad', 'ناموفق ✗', msgs + `<p class="mono">${res.httpLine}</p>`);
-  }
 }
 
 // ---------- CreateGood ----------
@@ -720,7 +532,6 @@ function sgAdopt(payload) {
   sgEdit.source = payload.source || 'default';
   SecondGroup.setGroups(payload.groups);
   renderSettingsTable();
-  renderSubGroupTable();
   refreshSecondGroup();
 }
 
@@ -757,30 +568,6 @@ async function saveSettingsTable() {
   }
 }
 
-/** The sub-group table, so the operator can see where a number came from. */
-function renderSubGroupTable() {
-  const body = document.querySelector('#subGroupTable tbody');
-  if (!body) return;
-  const shared = new Set();
-  const byExcel = {};
-  for (const g of SecondGroup.GROUPS) {
-    if (!g.excel) continue;
-    if (byExcel[g.excel]) shared.add(g.excel);
-    byExcel[g.excel] = true;
-  }
-  body.innerHTML = '';
-  for (const g of SecondGroup.GROUPS) {
-    const tr = document.createElement('tr');
-    if (g.excel && shared.has(g.excel)) tr.className = 'shared-excel';
-    for (const text of [g.name, g.excel || '—', String(g.orash)]) {
-      const td = document.createElement('td');
-      td.textContent = text;
-      tr.appendChild(td);
-    }
-    body.appendChild(tr);
-  }
-}
-
 /** Force the locked codes onto a record, whatever a scanned QR claimed. */
 function applyLockedGoodFields(data) {
   for (const [field, { value }] of Object.entries(LOCKED_GOOD_FIELDS)) data[field] = value;
@@ -804,10 +591,12 @@ function showLockedGoodFields() {
 // Only the required fields for CreateGood on this deployment.
 function buildGoodPayload() {
   const data = {
+    mode: ScanCore.MODES.LABEL,
     code: gVal('g_code'),
     name: gVal('g_name'),
     type: Number($('g_type').value),
     serial: gVal('g_serial'),
+    lengthValue: gNum('g_lengthValue'),   // متراژ کابل؛ اختیاری
     unitIdRef: LOCKED_GOOD_FIELDS.unitIdRef.value,
     unitPackingCodeRef: LOCKED_GOOD_FIELDS.unitPackingCodeRef.value,
     mainGroupCodeRef: LOCKED_GOOD_FIELDS.mainGroupCodeRef.value,
@@ -847,9 +636,12 @@ function validateGood(payload) {
  * @returns {Promise<{ok:boolean, code:?string, message:string, httpLine:string, blocked?:boolean}>}
  */
 async function postGood(data) {
+  // `mode` and anything else local to this system never leaves it.
+  const body = ScanCore.forService(data);
   const r = await callProxy('createGood', {
     method: 'POST',
-    body: { baseUrl: baseUrl(), token: state.token, uniqueID: uniqueID(), body: { uniqueID: uniqueID(), data } },
+    body: { baseUrl: baseUrl(), token: state.token, uniqueID: uniqueID(),
+            body: { uniqueID: uniqueID(), data: body } },
   });
   showRaw(r);
 
@@ -894,7 +686,7 @@ async function submitGood() {
 // The locked codes are absent on purpose: a scanned QR must not be able to
 // change them either, so nothing ever writes them back into the form.
 const GOOD_FIELD_INPUTS = {
-  code: 'g_code', name: 'g_name', serial: 'g_serial',
+  code: 'g_code', name: 'g_name', serial: 'g_serial', lengthValue: 'g_lengthValue',
   secondGroupCodeRef: 'g_secondGroupCodeRef',
 };
 
@@ -1080,25 +872,12 @@ window.addEventListener('DOMContentLoaded', async () => {
   $('password').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !$('btnLogin').disabled) { e.preventDefault(); login(); }
   });
-  $('btnLoadLookups').addEventListener('click', loadLookups);
-  $('btnAddLine').addEventListener('click', addLine);
-  $('hsc').addEventListener('change', () => {
-    // keep row storages in sync with header when they were empty
-    document.querySelectorAll('#linesBody .itms').forEach((s) => { if (!s.value) s.value = $('hsc').value; });
-  });
-  $('btnPreview').addEventListener('click', () => {
-    $('previewJson').textContent = JSON.stringify(buildPayload(), null, 2);
-    $('previewWrap').classList.remove('hidden');
-    $('previewWrap').open = true;
-  });
-  $('btnSubmit').addEventListener('click', submit);
 
   // Tabs
   document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
 
   // CreateGood handlers
   showLockedGoodFields();
-  renderSubGroupTable();
   refreshSecondGroup();
   loadSettingsTable(true);
   $('sgAdd').addEventListener('click', () => {
@@ -1123,7 +902,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   $('btnLoadGoodsRef').addEventListener('click', loadGoodsReference);
   $('btnLoadCodeRef').addEventListener('click', loadCodeReference);
   $('btnPreviewGood').addEventListener('click', () => {
-    $('goodPreviewJson').textContent = JSON.stringify(buildGoodPayload(), null, 2);
+    // Show what the service will actually receive, not the internal record.
+    const p = buildGoodPayload();
+    $('goodPreviewJson').textContent = JSON.stringify({ ...p, data: ScanCore.forService(p.data) }, null, 2);
     $('goodPreviewWrap').classList.remove('hidden');
     $('goodPreviewWrap').open = true;
   });

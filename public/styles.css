@@ -122,8 +122,13 @@ body::after {
   backdrop-filter: blur(26px) saturate(150%);
   -webkit-backdrop-filter: blur(26px) saturate(150%);
   border-inline-start: 1px solid var(--edge-2);
-  overflow: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--edge) transparent;
 }
+.rail::-webkit-scrollbar { width: 6px; }
+.rail::-webkit-scrollbar-thumb { background: var(--edge); border-radius: 99px; }
 .rail-brand, .rail-nav, .rail-foot { flex: none; }
 
 .rail-brand { display: flex; align-items: center; gap: 12px; padding: 2px 6px 0; }
@@ -170,16 +175,10 @@ body::after {
 }
 /* The one part allowed to scroll, and only once it runs out of room. */
 .rail-devices {
-  flex: 0 1 auto;
-  min-height: 0;
+  flex: none;
   display: grid; gap: 6px; align-content: start;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--edge) transparent;
   padding-inline-end: 2px;
 }
-.rail-devices::-webkit-scrollbar { width: 6px; }
-.rail-devices::-webkit-scrollbar-thumb { background: var(--edge); border-radius: 99px; }
 
 .rail-foot { margin-top: auto; display: grid; gap: 8px; justify-items: stretch; }
 
@@ -546,8 +545,25 @@ body::after {
 .q-meta .dot { opacity: .5; }
 .q-msg { color: var(--ink-dim); }
 .q-side { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
-.q-actions { display: flex; gap: 5px; opacity: .35; transition: opacity var(--t1) var(--ease-s); }
-.qrow:hover .q-actions { opacity: 1; }
+/* Row actions stay legible. They used to fade to 35% until hover, which read
+   as "disabled" on a touch screen, where there is no hover at all. */
+.q-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.q-btn { border-radius: 8px; font-weight: 600; }
+/* The one action that sends data — tinted, so it is not confused with the rest. */
+.q-btn-go {
+  color: var(--a2);
+  background: rgba(34,211,238,.12);
+  border-color: rgba(34,211,238,.3);
+}
+.q-btn-go:hover:not(:disabled) { background: rgba(34,211,238,.2); }
+.q-btn-quiet { color: var(--ink-dim); background: var(--glass-2); }
+.q-btn-quiet:hover:not(:disabled) { color: var(--ink); background: var(--glass-3); }
+.q-btn-del { color: var(--ink-faint); background: transparent; border-color: transparent; }
+.q-btn-del:hover:not(:disabled) {
+  color: var(--bad);
+  background: var(--bad-bg);
+  border-color: var(--bad-line);
+}
 
 .qrow[data-status="ok"]      { border-color: var(--good-line); background: linear-gradient(90deg, var(--good-bg), transparent 60%); }
 .qrow[data-status="ok"] .q-ring { background: var(--good-bg); color: var(--good); }
@@ -801,7 +817,18 @@ pre {
   font-size: 11.5px; line-height: 1.65;
   direction: ltr; text-align: left;
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  /* A one-line JSON blob used to stretch its container — a grid/flex item's
+     automatic minimum size is its content — and with it the whole page. Wrap
+     the text and refuse to grow past the column. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+  min-width: 0;
 }
+
+/* Same reason: panels must be allowed to be narrower than their content. */
+.panel, .tabpanel, .q-main, .qrow { min-width: 0; }
+.panel > details, .diag > details { min-width: 0; max-width: 100%; }
 
 .hidden { display: none !important; }
 
@@ -940,7 +967,6 @@ body.mobile .camera-wrap video { max-height: none; }
   .controlbar { border-radius: var(--r-m); top: 8px; }
   .qrow { grid-template-columns: 38px minmax(0, 1fr); }
   .q-side { grid-column: 1 / -1; justify-content: flex-start; }
-  .q-actions { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1038,37 +1064,26 @@ body.mobile .camera-wrap video { max-height: none; }
 .chip dd.bad { color: var(--bad); font-weight: 500; }
 .chip .ref-select { margin-top: .3rem; }
 
-/* Diagnostics are collapsed by default: useful, but not the everyday path. */
-.tools > summary { color: var(--muted); font-size: .9rem; }
-.tools > .row { margin-top: .6rem; }
-
-/* ---- one scanned good, in full ------------------------------------------
-   Collapsed by default: the queue stays scannable, and a row opens when the
-   operator wants to check it against the label in their hand. */
-.q-details { margin-top: .5rem; }
-.q-details > summary {
-  color: var(--muted);
-  font-size: .82rem;
-  cursor: pointer;
-}
-.q-details[open] > summary { margin-bottom: .5rem; }
+/* ---- what varies from one scanned good to the next ----------------------
+   An inline strip, always visible: three short facts read faster than a panel
+   that has to be opened. */
 .q-facts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
-  gap: .5rem .9rem;
-  margin: 0;
-  padding: .7rem .8rem;
-  border: 1px solid var(--edge-2);
-  border-radius: var(--r-s);
-  background: var(--glass-2);
+  display: flex;
+  flex-wrap: wrap;
+  gap: .3rem .9rem;
+  margin: .4rem 0 0;
 }
-.q-fact { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.q-fact { display: flex; align-items: baseline; gap: .35rem; min-width: 0; }
 .q-fact dt { font-size: .76rem; color: var(--muted); }
 .q-fact dd {
   margin: 0;
   color: var(--text);
-  font-size: .88rem;
+  font-size: .85rem;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
-.q-fact dd.mono { font-variant-numeric: tabular-nums; }
-.q-fact dd .bad { color: var(--bad); }
+.q-fact dd .bad { color: var(--bad); font-weight: 500; }
+
+/* Diagnostics: present, but visibly not part of the daily path. */
+.diag > summary { color: var(--muted); }
+.diag .row { margin-top: .6rem; }

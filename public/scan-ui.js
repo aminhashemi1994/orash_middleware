@@ -105,63 +105,34 @@
   };
 
   /**
-   * Each scan is rendered as a card, not a table row: the fields have very
-   * different widths (a code, a long Persian name, a service message), which no
-   * shared column grid can hold without something overflowing or misaligning.
-   */
-  /**
-   * Everything known about one scanned good, laid out so the operator can check
-   * it against the physical label before it is registered.
+   * The facts that differ from one scanned good to the next.
    *
-   * The interesting part is the sub-group: the number sent to Orash is derived
-   * from two digits of the goods code, and that derivation is invisible unless
-   * it is spelled out — family name, the Excel code it came from, and the Orash
-   * id it became.
+   * Deliberately not everything: unit, packing, main group and type are the
+   * same on every row, so repeating them per row is noise — they are stated
+   * once in «کدهای ثابت» on the registration form. The sub-group is the one
+   * reference code that varies, and it is derived rather than scanned, so it is
+   * the one worth showing here.
    */
-  function detailsHtml(item) {
+  function factsHtml(item) {
     const d = item.data || {};
     const sub = SecondGroup.resolve(d.code || '');
     const family = sub.status === 'ok' ? sub.matches[0] : null;
 
-    const rows = [
-      ['کد کالا', d.code, 'mono'],
-      ['عنوان', d.name],
-      ['سریال', d.serial, 'mono'],
-      ['متراژ', d.lengthValue != null && d.lengthValue !== '' ? `${d.lengthValue} متر` : null],
-      ['نوع', d.type === 1 ? '۱ — کالا' : d.type === 2 ? '۲ — خدمات' : d.type],
-      ['واحد شمارش', codeWithName(d.unitIdRef, UNIT_NAMES)],
-      ['نوع بسته‌بندی', codeWithName(d.unitPackingCodeRef, PACKING_NAMES)],
-      ['گروه اصلی', codeWithName(d.mainGroupCodeRef, MAIN_GROUP_NAMES)],
-      ['گروه فرعی', family
-        ? `${family.orash} — ${family.name}`
-        : `<span class="bad">${esc(sub.message)}</span>`, 'raw'],
-      ['کد اکسل گروه', sub.excel ? `${sub.excel} (رقم دوم و سوم کد)` : null, 'mono'],
-    ];
+    const facts = [
+      ['سریال', d.serial ? esc(d.serial) : null],
+      ['متراژ', d.lengthValue ? `${esc(d.lengthValue)} متر` : null],
+      ['گروه', family ? esc(family.name) : `<span class="bad">${esc(sub.message)}</span>`],
+    ].filter(([, v]) => v);
 
-    const cells = rows
-      .filter(([, value]) => value !== null && value !== undefined && value !== '')
-      .map(([key, value, cls]) => `
-        <div class="q-fact">
-          <dt>${esc(key)}</dt>
-          <dd class="${cls === 'mono' ? 'mono' : ''}">${cls === 'raw' ? value : esc(String(value))}</dd>
-        </div>`).join('');
-
-    return `<details class="q-details"><summary>مشخصات کامل</summary><dl class="q-facts">${cells}</dl></details>`;
+    return `<dl class="q-facts">${facts.map(([k, v]) => `
+      <div class="q-fact"><dt>${esc(k)}</dt><dd>${v}</dd></div>`).join('')}</dl>`;
   }
 
-  /** "5 — متر" when the number is one we have a name for, else just the number. */
-  function codeWithName(code, names) {
-    if (code === null || code === undefined || code === '') return null;
-    const name = names[code];
-    return name ? `${code} — ${name}` : String(code);
-  }
-
-  // The fixed codes' names, so the queue can spell out what a number means.
-  // They mirror LOCKED_GOOD_FIELDS in app.js.
-  const UNIT_NAMES = { 5: 'متر' };
-  const PACKING_NAMES = { 1: 'کلاف' };
-  const MAIN_GROUP_NAMES = { 1: 'نوع محصول' };
-
+  /**
+   * Each scan is rendered as a card, not a table row: the fields have very
+   * different widths (a code, a long Persian name, a service message), which no
+   * shared column grid can hold without something overflowing or misaligning.
+   */
   function renderQueue() {
     const body = el('scanQueueBody');
     body.innerHTML = '';
@@ -185,7 +156,7 @@
             <span class="mono">${esc(item.at)}</span>
             ${item.message ? `<span class="dot">•</span><span class="q-msg">${esc(item.message)}</span>` : ''}
           </div>
-          ${detailsHtml(item)}
+          ${factsHtml(item)}
         </div>
         <div class="q-side">
           <span class="pill ${kind}">${esc(label)}</span>
@@ -193,30 +164,34 @@
         </div>`;
 
       const actions = row.querySelector('.q-actions');
-      const addBtn = (text, title, fn) => {
+      const addBtn = (text, title, fn, kind = '') => {
         const b = document.createElement('button');
-        b.className = 'ghost tiny';
+        b.className = 'tiny q-btn ' + (kind || 'q-btn-quiet');
         b.textContent = text;
         b.title = title;
         b.addEventListener('click', fn);
         actions.appendChild(b);
       };
       if (item.status === 'held' || item.status === 'failed' || item.status === 'invalid') {
-        addBtn('ثبت', 'ارسال به سرویس', () => enqueueSend(item));
+        addBtn('ثبت', 'ارسال به سرویس', () => enqueueSend(item), 'q-btn-go');
       }
-      addBtn('در فرم', 'ریختن مقادیر در فرم پیش‌فرض', () => {
+      addBtn('در فرم', 'ریختن مقادیر در فرم ثبت کالا', () => {
         applyGoodToForm(item.data);
         log('busy', 'در فرم قرار گرفت', '<p>مقادیر این ردیف در فرم نوشته شد.</p>');
       });
-      addBtn('JSON', 'نمایش داده خام', () => {
-        el('scanRawJson').textContent = JSON.stringify({ raw: item.raw, data: item.data }, null, 2);
-        el('scanRawWrap').classList.remove('hidden');
-        el('scanRawWrap').open = true;
-      });
-      addBtn('✕', 'حذف', () => {
+      // Raw data is for working out why something failed — offered only then,
+      // so a normal row carries no button nobody presses.
+      if (item.status === 'failed' || item.status === 'invalid') {
+        addBtn('داده خام', 'برای عیب‌یابی', () => {
+          el('scanRawJson').textContent = JSON.stringify({ raw: item.raw, data: item.data }, null, 2);
+          el('scanRawWrap').classList.remove('hidden');
+          el('scanRawWrap').open = true;
+        });
+      }
+      addBtn('✕', 'حذف از صف', () => {
         scan.queue = scan.queue.filter((x) => x !== item);
         renderQueue();
-      });
+      }, 'q-btn-del');
       body.appendChild(row);
     }
 
@@ -751,38 +726,6 @@
     }
   }
 
-  // --------------------------------------------------------- sample QR maker
-
-  /** Renders the form's current values as a QR code, for testing the whole path. */
-  function renderSampleQr() {
-    const data = goodFormDefaults();
-    const text = JSON.stringify(data);
-    el('sampleJson').textContent = JSON.stringify(data, null, 2);
-    el('sampleWrap').classList.remove('hidden');
-    const canvas = el('sampleQr');
-    try {
-      const qr = qrcode(0, 'M');
-      qr.addData(text, 'Byte');
-      qr.make();
-      const cells = qr.getModuleCount();
-      const size = Math.max(2, Math.floor(300 / cells));
-      const quiet = 4;
-      canvas.width = canvas.height = (cells + quiet * 2) * size;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = '#000';
-      for (let r = 0; r < cells; r++) {
-        for (let c = 0; c < cells; c++) {
-          if (qr.isDark(r, c)) ctx.fillRect((c + quiet) * size, (r + quiet) * size, size, size);
-        }
-      }
-      el('sampleHint').textContent = `${text.length} کاراکتر`;
-    } catch (err) {
-      el('sampleHint').textContent = 'ساخت QR ناموفق بود: ' + err.message + ' (داده‌ها را کوتاه‌تر کنید)';
-    }
-  }
-
   // ---------------------------------------------------------------- wiring up
 
   /** Called by app.js whenever login/database state changes. */
@@ -895,7 +838,6 @@
     });
 
     // --- sample QR
-    el('btnSampleQr').addEventListener('click', renderSampleQr);
 
     renderQueue();
     window.onPanelStateChanged();
