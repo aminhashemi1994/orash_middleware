@@ -619,6 +619,7 @@ function validateGood(payload) {
   if (!d.type) errs.push('نوع مشخص نیست');
   if (!d.serial) errs.push('سریال کالا الزامی است');
   else if (!SERIAL_RE.test(d.serial)) errs.push('سریال باید عدد یا به شکل «عدد-حرف» باشد (مثل 123-a)');
+  if (!(Number(d.lengthValue) > 0)) errs.push('متراژ الزامی است (واحد شمارش متر است)');
   if (d.unitIdRef === undefined) errs.push('کد واحد شمارش (unitIdRef) الزامی است');
   if (d.unitPackingCodeRef === undefined) errs.push('کد نوع بسته‌بندی (unitPackingCodeRef) الزامی است');
   if (d.mainGroupCodeRef === undefined) errs.push('کد گروه اصلی الزامی است');

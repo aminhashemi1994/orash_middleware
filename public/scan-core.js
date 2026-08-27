@@ -332,6 +332,15 @@
   const SERIAL_RE = /^\d+(-[A-Za-z]+)?$/;
   function validate(data) {
     const errs = [];
+    // A QR with no mode predates the mode field, so nothing states which set of
+    // fixed codes it was meant for. Guessing would register a good under codes
+    // nobody chose, so it is refused and the label is reprinted instead.
+    const modes = Object.values(MODES);
+    if (!data.mode) {
+      errs.push('این QR فیلد mode ندارد — لیبل قدیمی است و باید دوباره چاپ شود');
+    } else if (!modes.includes(String(data.mode).toUpperCase())) {
+      errs.push(`حالت «${data.mode}» شناخته نشد (حالت‌های معتبر: ${modes.join('، ')})`);
+    }
     if (!data.name) errs.push('عنوان کالا خالی است');
     if (data.code && !/^\d+$/.test(String(data.code))) errs.push('کد کالا باید فقط عدد باشد');
     if (data.type !== 1 && data.type !== 2) errs.push('نوع کالا/خدمات مشخص نیست');
@@ -340,7 +349,18 @@
     if (data.unitIdRef === undefined) errs.push('کد واحد شمارش (unitIdRef) خالی است');
     if (data.unitPackingCodeRef === undefined) errs.push('کد نوع بسته‌بندی خالی است');
     if (data.mainGroupCodeRef === undefined) errs.push('کد گروه اصلی خالی است');
-    // No second group check: labels omit it until it arrives by name.
+    // No second group check: it is derived from the goods code, not scanned.
+
+    // Cable length. Required on goods (type 1) — the unit of measure is متر, so
+    // a good registered without one carries no quantity at all. Services
+    // (type 2) have no length, so they are exempt.
+    if (data.type !== 2) {
+      if (data.lengthValue === undefined || data.lengthValue === '') {
+        errs.push('متراژ (lengthValue) در QR نیست');
+      } else if (!(Number(data.lengthValue) > 0)) {
+        errs.push(`متراژ نامعتبر است: «${data.lengthValue}»`);
+      }
+    }
     return errs;
   }
 

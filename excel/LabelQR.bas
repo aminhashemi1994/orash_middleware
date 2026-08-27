@@ -10,7 +10,7 @@ Dim mat() As Byte                           ' matrix of QR
 Private Const LQ_SHEET As String = "صدور"
 Private Const LQ_CELL_CODE As String = "Z3"
 Private Const LQ_CELL_SERIAL As String = "C4"
-Private Const LQ_CELL_LENGTH As String = "C7"      ' متراژ کابل
+Private Const LQ_CELL_LENGTH As String = "D7"      ' متراژ کابل — یک عدد
 Private Const LQ_CELLS_NAME As String = "C5,C6,D9"
 Private Const LQ_SEPARATOR As String = " "
 Private Const LQ_MODE As String = "L"          ' این QR از لیبل ساخته شده

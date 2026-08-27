@@ -1083,6 +1083,7 @@ body.mobile .camera-wrap video { max-height: none; }
   overflow-wrap: anywhere;
 }
 .q-fact dd .bad { color: var(--bad); font-weight: 500; }
+.q-fact dd .dim { color: var(--ink-faint); font-weight: 400; }
 
 /* Diagnostics: present, but visibly not part of the daily path. */
 .diag > summary { color: var(--muted); }

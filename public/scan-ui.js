@@ -120,7 +120,9 @@
 
     const facts = [
       ['سریال', d.serial ? esc(d.serial) : null],
-      ['متراژ', d.lengthValue ? `${esc(d.lengthValue)} متر` : null],
+      // Always shown, even when absent: on a cable, a missing length is itself
+      // worth seeing — it means the label predates the متراژ field.
+      ['متراژ', d.lengthValue ? `${esc(d.lengthValue)} متر` : '<span class="dim">—</span>'],
       ['گروه', family ? esc(family.name) : `<span class="bad">${esc(sub.message)}</span>`],
     ].filter(([, v]) => v);
 
@@ -213,7 +215,7 @@
   // ------------------------------------------------------------------ intake
 
   /** Entry point for every source. */
-  function handleScan({ text, source }) {
+  function handleScan({ text, source, mode }) {
     const parsed = ScanCore.parse(text);
     beep(parsed.ok);
 
@@ -228,6 +230,7 @@
       // The locked codes win over anything the QR carried: a label printed
       // before they changed must not register a good with the old values.
       const data = applyLockedGoodFields(ScanCore.withDefaults(record.data, defaults));
+      if (mode && !data.mode) data.mode = mode;
       const errs = ScanCore.validate(data);
       const item = {
         id: ++scan.seq,
@@ -818,7 +821,10 @@
     el('btnManualScan').addEventListener('click', () => {
       const text = el('manualInput').value.trim();
       if (!text) return;
-      handleScan({ text, source: 'manual' });
+      // Typed by hand, here, now — so the mode is not in doubt the way it is
+      // for a QR of unknown vintage. Stamp it, or the mode check would reject
+      // a bare goods code as an old label.
+      handleScan({ text, source: 'manual', mode: ScanCore.MODES.LABEL });
       el('manualInput').value = '';
     });
 
