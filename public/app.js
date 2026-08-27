@@ -72,6 +72,18 @@ async function callProxy(name, { method = 'POST', query = null, body = null } = 
 function baseUrl() { return state.config?.defaults?.baseUrl || ''; }
 function uniqueID() { return $('database').value; }
 
+/** Is the selected database the production one? */
+function isProdDb() { return uniqueID() === state.config?.databases?.prod; }
+
+/**
+ * Prod is dangerous, not forbidden. The server decides — it refuses writes to
+ * the production database unless ALLOW_PROD_WRITE=1, and reports which it is in
+ * /config. The panel must read that same flag: gating the buttons on "is prod"
+ * alone left the operator unable to submit even after the server had been told
+ * to allow it, and the block looked like an upstream failure.
+ */
+function prodWriteBlocked() { return isProdDb() && !state.config?.allowProdWrite; }
+
 // Extract an array of rows from the various Orash "content" shapes.
 function rowsFrom(data) {
   if (!data) return [];
@@ -124,9 +136,14 @@ function markDatabaseBadge() {
   const opt = $('database').selectedOptions[0];
   const name = opt ? opt.textContent : '—';
   if (uid === dbs.prod) {
-    badge.className = 'db-badge prod';
-    badge.textContent = 'پایگاه داده: تولید (Production) ⛔';
-    $('prodWarn').classList.remove('hidden');
+    // Still the loudest badge on the page — but an allowed prod write is a
+    // warning, not a stop sign, so it drops the red and the alarm pulse.
+    const blocked = prodWriteBlocked();
+    badge.className = 'db-badge ' + (blocked ? 'prod' : 'prod-live');
+    badge.textContent = blocked
+      ? 'پایگاه داده: تولید (Production) ⛔'
+      : 'پایگاه داده: تولید (Production) ⚠ ثبت واقعی';
+    $('prodWarn').classList.toggle('hidden', !blocked);
   } else if (uid === dbs.test) {
     badge.className = 'db-badge test';
     badge.textContent = 'پایگاه داده: تست ✓';
@@ -248,10 +265,9 @@ function enterApp(displayName) {
   $('s_database').textContent = dbOpt ? dbOpt.textContent : '—';
   $('s_user').textContent = name;
   $('profileName').textContent = name;
-  const isProd = uniqueID() === state.config?.databases?.prod;
-  $('s_write').textContent = isProd
+  $('s_write').textContent = prodWriteBlocked()
     ? 'ثبت روی پایگاه تولید مسدود است'
-    : 'ثبت مجاز است';
+    : (isProdDb() ? 'ثبت مجاز است — روی پایگاه تولید' : 'ثبت مجاز است');
   setPill($('sessionState'), 'متصل ✓', 'good');
 
   // Scanners are only attached once there is a session to submit into.
@@ -502,9 +518,9 @@ function validate(payload) {
 
 // ---------- submit + status ----------
 function refreshSubmitEnabled() {
-  const isProd = uniqueID() === state.config?.databases?.prod;
-  const blocked = !state.token || isProd;
-  const title = isProd ? 'ثبت روی پایگاه تولید مسدود است' : (!state.token ? 'ابتدا وارد شوید' : '');
+  const noWrite = prodWriteBlocked();
+  const blocked = !state.token || noWrite;
+  const title = noWrite ? 'ثبت روی پایگاه تولید مسدود است' : (!state.token ? 'ابتدا وارد شوید' : '');
   for (const id of ['btnSubmit', 'btnSubmitGood']) {
     const b = $(id);
     if (!b) continue;

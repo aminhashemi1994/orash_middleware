@@ -231,7 +231,7 @@
   function canSend() {
     if (!state.token) return 'ابتدا وارد شوید (توکن لازم است)';
     if (!uniqueID()) return 'پایگاه داده انتخاب نشده';
-    if (uniqueID() === state.config?.databases?.prod) return 'ثبت روی پایگاه تولید مسدود است';
+    if (typeof prodWriteBlocked === 'function' && prodWriteBlocked()) return 'ثبت روی پایگاه تولید مسدود است';
     return null;
   }
 
