@@ -414,7 +414,11 @@ const gNum = (id) => (gVal(id) === '' ? undefined : Number(gVal(id)));
  */
 const LOCKED_GOOD_FIELDS = {
   unitIdRef: { value: 5, label: 'متر' },
-  unitPackingCodeRef: { value: 1, label: 'کلاف' },
+  // Orash rejected 1 with «کد بسته بندي صحيح نيست» on 2026-08-27, so the real
+  // code for کلاف is not 1 and is not known. The field is optional in
+  // CreateGood, so it is left out entirely until accounting supplies the
+  // number: value null means "do not send".
+  unitPackingCodeRef: { value: null, label: 'ارسال نمی‌شود — کد معتبر هنوز مشخص نیست' },
   mainGroupCodeRef: { value: 1, label: 'نوع محصول' },
 };
 
@@ -570,7 +574,10 @@ async function saveSettingsTable() {
 
 /** Force the locked codes onto a record, whatever a scanned QR claimed. */
 function applyLockedGoodFields(data) {
-  for (const [field, { value }] of Object.entries(LOCKED_GOOD_FIELDS)) data[field] = value;
+  for (const [field, { value }] of Object.entries(LOCKED_GOOD_FIELDS)) {
+    if (value === null) delete data[field];
+    else data[field] = value;
+  }
   // The sub-group follows the goods code, not the QR: a label printed before
   // the mapping existed carries no sub-group at all, and one printed with a
   // stale mapping carries the wrong one.
@@ -584,7 +591,7 @@ function applyLockedGoodFields(data) {
 function showLockedGoodFields() {
   for (const [field, { value, label }] of Object.entries(LOCKED_GOOD_FIELDS)) {
     const el = $('g_' + field);
-    if (el) el.textContent = `${value} — ${label}`;
+    if (el) el.textContent = value === null ? label : `${value} — ${label}`;
   }
 }
 
@@ -598,7 +605,7 @@ function buildGoodPayload() {
     serial: gVal('g_serial'),
     lengthValue: gNum('g_lengthValue'),   // متراژ کابل؛ اختیاری
     unitIdRef: LOCKED_GOOD_FIELDS.unitIdRef.value,
-    unitPackingCodeRef: LOCKED_GOOD_FIELDS.unitPackingCodeRef.value,
+    unitPackingCodeRef: LOCKED_GOOD_FIELDS.unitPackingCodeRef.value ?? undefined,
     mainGroupCodeRef: LOCKED_GOOD_FIELDS.mainGroupCodeRef.value,
     secondGroupCodeRef: gNum('g_secondGroupCodeRef'),   // set by refreshSecondGroup()
     isActive: true,
@@ -621,7 +628,6 @@ function validateGood(payload) {
   else if (!SERIAL_RE.test(d.serial)) errs.push('سریال باید عدد یا به شکل «عدد-حرف» باشد (مثل 123-a)');
   if (!(Number(d.lengthValue) > 0)) errs.push('متراژ الزامی است (واحد شمارش متر است)');
   if (d.unitIdRef === undefined) errs.push('کد واحد شمارش (unitIdRef) الزامی است');
-  if (d.unitPackingCodeRef === undefined) errs.push('کد نوع بسته‌بندی (unitPackingCodeRef) الزامی است');
   if (d.mainGroupCodeRef === undefined) errs.push('کد گروه اصلی الزامی است');
   if (d.secondGroupCodeRef === undefined) {
     errs.push('گروه فرعی از کد کالا به دست نیامد: ' + SecondGroup.resolve(d.code || '').message);

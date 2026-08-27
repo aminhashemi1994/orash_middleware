@@ -302,7 +302,7 @@ Doc bug: the "input values" table for this endpoint only lists `uniqueID` + `tok
 | --- | --- | --- | --- |
 | `uniqueID` | yes | string | database GUID |
 | `data` | yes | object | payload |
-| `data.code` | no | string | goods/service code. `null` → server assigns its suggested code |
+| `data.code` | no | string | goods/service code. `null` → server assigns its suggested code |  **⚠ truncated to 20 characters on this path — see the note in §5.1**
 | `data.name` | yes | string | goods/service title |
 | `data.type` | yes | long | `1` = good (کالا), `2` = service (خدمات) |
 | `data.unitIdRef` | yes | long | unit-of-measure code |
@@ -433,6 +433,21 @@ Sale price list:
 ```
 
 The PDF does not document the response schema for this endpoint — only request bodies. Response fields have to be discovered from a live call or Swagger.
+
+**`CreateGood` truncates a 21-digit goods code — confirmed on production,
+2026-08-27.** A good registered through this API with `code`
+`112420000031506404071` (21 digits) was stored as `11242000003150640407`
+(20 digits): the trailing digit is dropped, and the first 20 are kept exactly.
+The same product codes entered through the Orash **desktop application** keep all
+21 digits, so the limit is in this API's path, not in the product coding scheme.
+
+It is not a `bigint` overflow — `bigint` tops out at 19 digits, and 19 digits is
+not what came back — so the parameter or column on this path is 20 wide
+(`varchar(20)` / `decimal(20,0)` both fit the evidence). No client-side change
+can work around it: the value leaves us complete and is cut inside the service.
+
+Severity: every good registered through the web service gets a code that differs
+from the one on its label, silently and with a `Done` response.
 
 **Types confirmed live for `CreateGood`, 2026-08-27.** Probed with a `uniqueID` that
 matches no database, so the model binder's verdict is observed while the controller

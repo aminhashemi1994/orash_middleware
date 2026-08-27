@@ -113,22 +113,20 @@ body::after {
   position: sticky;
   top: 0;
   align-self: start;
-  height: 100vh;
+  height: 100dvh;              /* dvh, so a phone's collapsing toolbar cannot
+                                  push the rail past the visible area */
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 18px 14px;
+  gap: clamp(8px, 1.6vh, 16px);
+  padding: clamp(10px, 1.8vh, 18px) 14px;
   background: linear-gradient(180deg, rgba(12,16,32,.82), rgba(8,11,24,.72));
   backdrop-filter: blur(26px) saturate(150%);
   -webkit-backdrop-filter: blur(26px) saturate(150%);
   border-inline-start: 1px solid var(--edge-2);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: var(--edge) transparent;
+  /* Never scrolls, and nothing in it is hidden: the spacing shrinks with the
+     viewport (the clamps above and on .dev) so the whole column always fits. */
+  overflow: hidden;
 }
-.rail::-webkit-scrollbar { width: 6px; }
-.rail::-webkit-scrollbar-thumb { background: var(--edge); border-radius: 99px; }
 .rail-brand, .rail-nav, .rail-foot { flex: none; }
 
 .rail-brand { display: flex; align-items: center; gap: 12px; padding: 2px 6px 0; }
@@ -174,9 +172,15 @@ body::after {
   color: var(--ink-faint);
 }
 /* The one part allowed to scroll, and only once it runs out of room. */
+/* The one part that can shrink. It gets whatever height is left after the
+   brand, nav and foot, and compresses its own rows rather than overflowing. */
 .rail-devices {
-  flex: none;
-  display: grid; gap: 6px; align-content: start;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-auto-rows: minmax(0, auto);
+  gap: 4px;
+  align-content: start;
   padding-inline-end: 2px;
 }
 
@@ -219,7 +223,8 @@ body::after {
 /* device chip */
 .dev {
   display: flex; align-items: center; gap: 11px;
-  padding: 9px 11px;
+  padding: clamp(5px, .9vh, 9px) 10px;
+  min-width: 0;
   border-radius: var(--r-s);
   border: 1px solid var(--edge-2);
   background: var(--glass-2);
@@ -931,6 +936,18 @@ body.mobile .camera-wrap video { max-height: none; }
   .rail-nav .tab { padding: 9px 12px; }
 }
 
+/* Shorter still: the same two-up layout, tighter. Nothing is hidden — the rail
+   never scrolls, so everything in it has to stay visible. */
+@media (max-height: 600px) and (min-width: 901px) {
+  .rail { gap: 8px; padding: 10px; }
+  .brand { width: 30px; height: 30px; }
+  .dev { padding: 5px 7px; }
+  .dev-icon { width: 22px; height: 22px; }
+  .dev-name { font-size: 10.5px; }
+  .dev-state { font-size: 9.5px; }
+  .rail-nav .tab { padding: 7px 10px; font-size: 12.5px; }
+}
+
 @media (max-width: 900px) {
   :root { --rail: 0px; }
   /* minmax(0,…) not 1fr: a grid item's automatic minimum size is its content,
@@ -1088,3 +1105,4 @@ body.mobile .camera-wrap video { max-height: none; }
 /* Diagnostics: present, but visibly not part of the daily path. */
 .diag > summary { color: var(--muted); }
 .diag .row { margin-top: .6rem; }
+
