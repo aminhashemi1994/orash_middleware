@@ -373,6 +373,9 @@ async function loadLookups() {
       currentUserId: state.userId, withFi: false,
     });
     state.goods = rowsFrom(goods.data);
+    // Same rows the reference dropdowns are built from, so picking up the
+    // lookups fills them too — no second GetGoods call.
+    for (const field of CODE_REF_FIELDS) fillRefSelect(field, collectRefValues(state.goods, field));
 
     // (re)build any existing line rows so their goods dropdown fills
     document.querySelectorAll('#linesBody tr').forEach(fillGoodsSelectInRow);
@@ -679,6 +682,10 @@ function applyGoodToForm(data) {
   for (const [field, id] of Object.entries(GOOD_FIELD_INPUTS)) {
     if (data[field] !== undefined && data[field] !== '') $(id).value = data[field];
   }
+  for (const [field, id] of Object.entries(GOOD_FIELD_INPUTS)) {
+    const ref = CODE_REF_FIELDS.find((f) => f.input === id);
+    if (ref && data[field] !== undefined && data[field] !== '') selectRefValue(ref, data[field]);
+  }
   if (data.type === 1 || data.type === 2) $('g_type').value = String(data.type);
 }
 
@@ -704,46 +711,124 @@ async function loadGoodsReference() {
  * name — that pairing is the only way to learn which number means "قرقره".
  */
 const CODE_REF_FIELDS = [
-  { title: 'واحد شمارش (unitIdRef)', nameKeys: ['unitsName', 'unitName'], codeKeys: ['unitIdRef', 'unitId', 'unitCode'] },
-  { title: 'نوع بسته‌بندی (unitPackingCodeRef)', nameKeys: ['unitPackingName'], codeKeys: ['unitPackingCodeRef', 'unitPackingCode'] },
-  { title: 'گروه اصلی (mainGroupCodeRef)', nameKeys: ['mainGroupName'], codeKeys: ['mainGroupCodeRef', 'mainGroupCode'] },
-  { title: 'گروه فرعی (secondGroupCodeRef)', nameKeys: ['secondGroupName'], codeKeys: ['secondGroupCodeRef', 'secondGroupCode'] },
+  { input: 'g_unitIdRef', title: 'واحد شمارش (unitIdRef)',
+    nameKeys: ['unitsName', 'unitName'], codeKeys: ['unitIdRef', 'unitId', 'unitCode'] },
+  { input: 'g_unitPackingCodeRef', title: 'نوع بسته‌بندی (unitPackingCodeRef)',
+    nameKeys: ['unitPackingName'], codeKeys: ['unitPackingCodeRef', 'unitPackingCode'] },
+  { input: 'g_mainGroupCodeRef', title: 'گروه اصلی (mainGroupCodeRef)',
+    nameKeys: ['mainGroupName'], codeKeys: ['mainGroupCodeRef', 'mainGroupCode'] },
+  { input: 'g_secondGroupCodeRef', title: 'گروه فرعی (secondGroupCodeRef)',
+    nameKeys: ['secondGroupName'], codeKeys: ['secondGroupCodeRef', 'secondGroupCode'] },
 ];
 
-function summarizeCodeRefs(rows) {
-  const out = {};
-  for (const field of CODE_REF_FIELDS) {
-    const seen = new Map();   // name -> Set of codes seen with it
-    for (const row of rows) {
-      const nameKey = field.nameKeys.find((k) => row[k] !== undefined && row[k] !== null && row[k] !== '');
-      if (!nameKey) continue;
-      const name = String(row[nameKey]).trim();
-      if (!name) continue;
-      if (!seen.has(name)) seen.set(name, new Set());
-      const codeKey = field.codeKeys.find((k) => row[k] !== undefined && row[k] !== null && row[k] !== '');
-      if (codeKey) seen.get(name).add(row[codeKey]);
-    }
-    out[field.title] = [...seen.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0], 'fa'))
-      .map(([name, codes]) => (codes.size ? { name, code: [...codes] } : { name, code: 'نامعلوم — پاسخ سرویس کد را برنمی‌گرداند' }));
+/** Distinct {name, codes} pairs one field showed across the goods that came back. */
+function collectRefValues(rows, field) {
+  const seen = new Map();   // name -> Set of codes seen with it
+  for (const row of rows) {
+    const nameKey = field.nameKeys.find((k) => row[k] !== undefined && row[k] !== null && row[k] !== '');
+    const codeKey = field.codeKeys.find((k) => row[k] !== undefined && row[k] !== null && row[k] !== '');
+    const name = nameKey ? String(row[nameKey]).trim() : '';
+    if (!name && !codeKey) continue;
+    const key = name || String(row[codeKey]);
+    if (!seen.has(key)) seen.set(key, new Set());
+    if (codeKey) seen.get(key).add(Number(row[codeKey]));
   }
-  return out;
+  return [...seen.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0], 'fa'))
+    .map(([name, codes]) => ({ name, codes: [...codes] }));
 }
 
+/**
+ * Fill one field's dropdown. A value whose code the response did not carry is
+ * still listed, but disabled: picking a name we cannot turn into a number would
+ * only send a wrong code to CreateGood.
+ */
+function fillRefSelect(field, values) {
+  const sel = $(field.input + '_sel');
+  const input = $(field.input);
+  if (!sel) return;
+  const current = input.value;
+  sel.innerHTML = '';
+  const add = (value, label, disabled) => {
+    const o = document.createElement('option');
+    o.value = value; o.textContent = label; o.disabled = !!disabled;
+    sel.appendChild(o);
+    return o;
+  };
+  add('', values.length ? '— انتخاب کنید —' : '— سرویس مقداری برنگرداند —');
+  for (const v of values) {
+    if (v.codes.length === 1) add(String(v.codes[0]), `${v.codes[0]} — ${v.name}`);
+    else if (v.codes.length > 1) add('', `${v.name} — چند کد متفاوت: ${v.codes.join('، ')}`, true);
+    else add('', `${v.name} — کد نامعلوم (سرویس کد را برنمی‌گرداند)`, true);
+  }
+  add('__manual__', 'ورود دستی کد');
+  // Keep whatever the field already held: match it to an option, else manual.
+  if (current !== '') {
+    const hit = [...sel.options].find((o) => o.value === current);
+    sel.value = hit ? current : '__manual__';
+  }
+  syncRefInput(field);
+}
+
+/** The <input> is the single source of truth; the <select> only writes into it. */
+function syncRefInput(field) {
+  const sel = $(field.input + '_sel');
+  const input = $(field.input);
+  if (!sel) return;
+  const manual = sel.value === '__manual__';
+  input.classList.toggle('hidden', !manual && sel.value !== '');
+  if (!manual && sel.value !== '') input.value = sel.value;
+  if (!manual && sel.value === '') input.classList.remove('hidden');
+}
+
+/** Point a dropdown at a code that arrived from elsewhere (a scan, a saved default). */
+function selectRefValue(field, code) {
+  const sel = $(field.input + '_sel');
+  if (!sel) return;
+  const hit = [...sel.options].find((o) => o.value === String(code) && !o.disabled);
+  sel.value = hit ? String(code) : '__manual__';
+  syncRefInput(field);
+}
+
+/**
+ * The reference codes CreateGood demands — unit, packing, main and second
+ * group — have no lookup endpoint of their own (see docs/orash-web-service-api.md
+ * §5.1). The only place they surface is on goods that already exist, so this
+ * reads GetGoods once and collects every distinct value it saw for each of the
+ * four, keeping any *Code/*Id sibling the response happens to carry next to the
+ * name — that pairing is the only way to learn which number means "قرقره".
+ */
 async function loadCodeReference() {
   if (!state.token) { alert('ابتدا وارد شوید.'); return; }
+  const btn = $('btnLoadCodeRef');
+  const label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'در حال دریافت…'; }
   $('codeRefWrap').classList.remove('hidden');
-  $('codeRefWrap').open = true;
   $('codeRefJson').textContent = 'در حال بارگذاری…';
-  const goods = await lookup('goods', {
-    showStockFlg: false, flagDepartment: false, fromDepartment: 0, toDepartment: 0,
-    currentUserId: state.userId, withFi: false,
-  });
-  const rows = rowsFrom(goods.data);
-  state.goods = rows;
-  $('codeRefJson').textContent = rows.length
-    ? JSON.stringify(summarizeCodeRefs(rows), null, 2)
-    : 'هیچ کالایی برنگشت.';
+  try {
+    const goods = await lookup('goods', {
+      showStockFlg: false, flagDepartment: false, fromDepartment: 0, toDepartment: 0,
+      currentUserId: state.userId, withFi: false,
+    });
+    const rows = rowsFrom(goods.data);
+    state.goods = rows;
+    const summary = {};
+    for (const field of CODE_REF_FIELDS) {
+      const values = collectRefValues(rows, field);
+      fillRefSelect(field, values);
+      summary[field.title] = values.map((v) => (v.codes.length
+        ? { name: v.name, code: v.codes.length === 1 ? v.codes[0] : v.codes }
+        : { name: v.name, code: 'نامعلوم — پاسخ سرویس کد را برنمی‌گرداند' }));
+    }
+    $('codeRefJson').textContent = rows.length
+      ? JSON.stringify(summary, null, 2)
+      : 'هیچ کالایی برنگشت؛ فهرست‌ها خالی ماند.';
+  } catch (err) {
+    $('codeRefWrap').open = true;
+    $('codeRefJson').textContent = 'خطا در دریافت: ' + (err && err.message ? err.message : err);
+  } finally {
+    if (btn) { btn.disabled = !state.token; btn.textContent = label; }
+  }
 }
 
 // ---------- tabs ----------
@@ -798,6 +883,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   $('btnSubmitGood').addEventListener('click', submitGood);
   $('btnLoadGoodsRef').addEventListener('click', loadGoodsReference);
   $('btnLoadCodeRef').addEventListener('click', loadCodeReference);
+  for (const field of CODE_REF_FIELDS) {
+    const sel = $(field.input + '_sel');
+    if (sel) sel.addEventListener('change', () => syncRefInput(field));
+  }
   $('btnPreviewGood').addEventListener('click', () => {
     $('goodPreviewJson').textContent = JSON.stringify(buildGoodPayload(), null, 2);
     $('goodPreviewWrap').classList.remove('hidden');

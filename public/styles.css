@@ -947,3 +947,7 @@ body.mobile .camera-wrap video { max-height: none; }
     transition-duration: .001ms !important;
   }
 }
+
+/* Reference-code fields: a dropdown filled from the service, with the raw
+   number input kept underneath for codes the service never showed us. */
+.ref-select { margin-bottom: 6px; }

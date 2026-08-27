@@ -219,23 +219,27 @@
             <input id="g_serial" type="text" placeholder="مثلاً: 123 یا 123-a" />
           </label>
           <label><span class="lbl-row">واحد شمارش (unitIdRef) <em>الزامی</em></span>
+            <select id="g_unitIdRef_sel" class="ref-select"><option value="">— ابتدا «دریافت مقادیر از سرویس» —</option><option value="__manual__">ورود دستی کد</option></select>
             <input id="g_unitIdRef" type="number" placeholder="کد واحد" />
           </label>
           <label><span class="lbl-row">نوع بسته‌بندی (unitPackingCodeRef) <em>الزامی</em></span>
-            <input id="g_unitPackingCodeRef" type="number" />
+            <select id="g_unitPackingCodeRef_sel" class="ref-select"><option value="">— ابتدا «دریافت مقادیر از سرویس» —</option><option value="__manual__">ورود دستی کد</option></select>
+            <input id="g_unitPackingCodeRef" type="number" placeholder="کد بسته‌بندی" />
           </label>
           <label><span class="lbl-row">گروه اصلی (mainGroupCodeRef) <em>الزامی</em></span>
-            <input id="g_mainGroupCodeRef" type="number" />
+            <select id="g_mainGroupCodeRef_sel" class="ref-select"><option value="">— ابتدا «دریافت مقادیر از سرویس» —</option><option value="__manual__">ورود دستی کد</option></select>
+            <input id="g_mainGroupCodeRef" type="number" placeholder="کد گروه اصلی" />
           </label>
           <label><span class="lbl-row">گروه فرعی (secondGroupCodeRef) <em>الزامی</em></span>
-            <input id="g_secondGroupCodeRef" type="number" />
+            <select id="g_secondGroupCodeRef_sel" class="ref-select"><option value="">— ابتدا «دریافت مقادیر از سرویس» —</option><option value="__manual__">ورود دستی کد</option></select>
+            <input id="g_secondGroupCodeRef" type="number" placeholder="کد گروه فرعی" />
           </label>
         </div>
         <div class="row">
           <button id="btnSubmitGood" class="primary" disabled>ثبت کالا (CreateGood)</button>
           <button id="btnPreviewGood" class="ghost">پیش‌نمایش JSON</button>
           <button id="btnLoadGoodsRef" class="ghost" disabled>کالاهای موجود</button>
-          <button id="btnLoadCodeRef" class="ghost" disabled>مقادیر مرجع (واحد/گروه/بسته‌بندی)</button>
+          <button id="btnLoadCodeRef" class="ghost" disabled>دریافت مقادیر از سرویس</button>
         </div>
         <div id="goodStatus" class="status hidden"></div>
         <details id="goodPreviewWrap" class="hidden"><summary>بدنه درخواست</summary><pre id="goodPreviewJson"></pre></details>
