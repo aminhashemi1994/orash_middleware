@@ -235,10 +235,16 @@
           <button id="btnSubmitGood" class="primary" disabled>ثبت کالا (CreateGood)</button>
           <button id="btnPreviewGood" class="ghost">پیش‌نمایش JSON</button>
           <button id="btnLoadGoodsRef" class="ghost" disabled>کالاهای موجود</button>
+          <button id="btnLoadCodeRef" class="ghost" disabled>مقادیر مرجع (واحد/گروه/بسته‌بندی)</button>
         </div>
         <div id="goodStatus" class="status hidden"></div>
         <details id="goodPreviewWrap" class="hidden"><summary>بدنه درخواست</summary><pre id="goodPreviewJson"></pre></details>
         <details id="goodsRefWrap" class="hidden"><summary>کالاهای موجود (مرجع)</summary><pre id="goodsRefJson">—</pre></details>
+        <details id="codeRefWrap" class="hidden">
+          <summary>مقادیر مرجع دیده‌شده در کالاهای موجود</summary>
+          <p class="hint">سرویس اوراش هیچ endpoint فهرست‌کردنی برای واحد شمارش، گروه اصلی/فرعی و نوع بسته‌بندی ندارد؛ این فهرست از روی کالاهای ثبت‌شده (GetGoods) ساخته می‌شود، پس فقط مقادیری را نشان می‌دهد که دست‌کم یک کالا از آن‌ها استفاده کرده است.</p>
+          <pre id="codeRefJson">—</pre>
+        </details>
       </section>
       <!-- ============ scan sources ============ -->
       <section class="sources">

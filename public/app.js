@@ -508,8 +508,10 @@ function refreshSubmitEnabled() {
     b.disabled = blocked;
     b.title = title;
   }
-  const ref = $('btnLoadGoodsRef');
-  if (ref) ref.disabled = !state.token;
+  for (const id of ['btnLoadGoodsRef', 'btnLoadCodeRef']) {
+    const ref = $(id);
+    if (ref) ref.disabled = !state.token;
+  }
   // The scanner panel mirrors the same login/database gate (scan-ui.js).
   if (typeof onPanelStateChanged === 'function') onPanelStateChanged();
 }
@@ -693,6 +695,57 @@ async function loadGoodsReference() {
   $('goodsRefJson').textContent = JSON.stringify(goods.data, null, 2);
 }
 
+/**
+ * The reference codes CreateGood demands — unit, packing, main and second
+ * group — have no lookup endpoint of their own (see docs/orash-web-service-api.md
+ * §5.1). The only place they surface is on goods that already exist, so this
+ * reads GetGoods once and collects every distinct value it saw for each of the
+ * four, keeping any *Code/*Id sibling the response happens to carry next to the
+ * name — that pairing is the only way to learn which number means "قرقره".
+ */
+const CODE_REF_FIELDS = [
+  { title: 'واحد شمارش (unitIdRef)', nameKeys: ['unitsName', 'unitName'], codeKeys: ['unitIdRef', 'unitId', 'unitCode'] },
+  { title: 'نوع بسته‌بندی (unitPackingCodeRef)', nameKeys: ['unitPackingName'], codeKeys: ['unitPackingCodeRef', 'unitPackingCode'] },
+  { title: 'گروه اصلی (mainGroupCodeRef)', nameKeys: ['mainGroupName'], codeKeys: ['mainGroupCodeRef', 'mainGroupCode'] },
+  { title: 'گروه فرعی (secondGroupCodeRef)', nameKeys: ['secondGroupName'], codeKeys: ['secondGroupCodeRef', 'secondGroupCode'] },
+];
+
+function summarizeCodeRefs(rows) {
+  const out = {};
+  for (const field of CODE_REF_FIELDS) {
+    const seen = new Map();   // name -> Set of codes seen with it
+    for (const row of rows) {
+      const nameKey = field.nameKeys.find((k) => row[k] !== undefined && row[k] !== null && row[k] !== '');
+      if (!nameKey) continue;
+      const name = String(row[nameKey]).trim();
+      if (!name) continue;
+      if (!seen.has(name)) seen.set(name, new Set());
+      const codeKey = field.codeKeys.find((k) => row[k] !== undefined && row[k] !== null && row[k] !== '');
+      if (codeKey) seen.get(name).add(row[codeKey]);
+    }
+    out[field.title] = [...seen.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0], 'fa'))
+      .map(([name, codes]) => (codes.size ? { name, code: [...codes] } : { name, code: 'نامعلوم — پاسخ سرویس کد را برنمی‌گرداند' }));
+  }
+  return out;
+}
+
+async function loadCodeReference() {
+  if (!state.token) { alert('ابتدا وارد شوید.'); return; }
+  $('codeRefWrap').classList.remove('hidden');
+  $('codeRefWrap').open = true;
+  $('codeRefJson').textContent = 'در حال بارگذاری…';
+  const goods = await lookup('goods', {
+    showStockFlg: false, flagDepartment: false, fromDepartment: 0, toDepartment: 0,
+    currentUserId: state.userId, withFi: false,
+  });
+  const rows = rowsFrom(goods.data);
+  state.goods = rows;
+  $('codeRefJson').textContent = rows.length
+    ? JSON.stringify(summarizeCodeRefs(rows), null, 2)
+    : 'هیچ کالایی برنگشت.';
+}
+
 // ---------- tabs ----------
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
@@ -744,6 +797,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // CreateGood handlers
   $('btnSubmitGood').addEventListener('click', submitGood);
   $('btnLoadGoodsRef').addEventListener('click', loadGoodsReference);
+  $('btnLoadCodeRef').addEventListener('click', loadCodeReference);
   $('btnPreviewGood').addEventListener('click', () => {
     $('goodPreviewJson').textContent = JSON.stringify(buildGoodPayload(), null, 2);
     $('goodPreviewWrap').classList.remove('hidden');
