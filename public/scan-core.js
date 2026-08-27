@@ -327,7 +327,7 @@
     if (data.unitIdRef === undefined) errs.push('کد واحد شمارش (unitIdRef) خالی است');
     if (data.unitPackingCodeRef === undefined) errs.push('کد نوع بسته‌بندی خالی است');
     if (data.mainGroupCodeRef === undefined) errs.push('کد گروه اصلی خالی است');
-    if (data.secondGroupCodeRef === undefined) errs.push('کد گروه فرعی خالی است');
+    // No second group check: labels omit it until it arrives by name.
     return errs;
   }
 
