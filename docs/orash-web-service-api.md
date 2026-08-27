@@ -162,6 +162,15 @@ The server matches headers to details by `hid`, so the caller owns key generatio
 
 Path versioning is inconsistent: `Install`, `Auth`, `Good/CreateGood`, `Good/GetGoods`, `RecPay/CreateRecPay` and `Driver/GetDriversInfo` are unversioned; everything else sits under `/api/v3/`.
 
+**Checked against the live host (192.168.3.210:5000), 2026-08-27:** the goods
+paths the PDF gives unversioned do **not** exist there. `POST /api/Good/GetGoods`
+and `POST /api/Good/CreateGood` answer `404`, while `/api/v3/Good/GetGoods` and
+`/api/v3/Good/CreateGood` answer `401` without a token — i.e. they are the real
+routes. Treat the unversioned goods paths in this document as out of date and
+use `/api/v3/` for them, as `server.js` already does. There is no Swagger
+document exposed (`/swagger/*` → 404), so the endpoint list cannot be verified
+any further without credentials.
+
 ---
 
 ## 4. Bootstrap & authentication
@@ -344,6 +353,19 @@ Documented validation failures:
 
 Note there is no documented endpoint to *list* units, main groups, sub-groups, categories or patterns — those reference codes must come from the Orash desktop app or the database directly. This is a real gap for a middleware layer.
 
+**Verified against the live host, 2026-08-27 — no undocumented lookup exists either.**
+850 candidate paths were probed (`Good`/`Unit`/`Group`/`Packing`/`Reference`/… ×
+`GetUnits`/`GetMainGroups`/`GetPackings`/… , both `/api/` and `/api/v3/`): every one
+answered `404`. The probe is trustworthy because a route that *does* exist answers
+distinctly — `POST /api/v3/Good/GetGoods` → `401` without a token, and `GET` on it
+→ `405` — so `404` really means "no such route". No discovery surface is exposed
+either (`/`, `/api`, `/api/v3`, `/health`, `/swagger/*`, `/openapi/v1.json` → 404).
+
+So the only place any of these four codes can be read from is `GetGoods`, and even
+there the response carries the *names* (`unitsName`, `unitPackingName`,
+`mainGroupName`, `secondGroupName`) — the PDF documents no code fields alongside
+them. There is no name → code translation anywhere in this API.
+
 ### 5.2 `POST /api/Good/GetGoods`
 
 Search goods. All `data` members act as filters; it also doubles as a stock-lookup and price-list endpoint via flags.
@@ -411,6 +433,35 @@ Sale price list:
 ```
 
 The PDF does not document the response schema for this endpoint — only request bodies. Response fields have to be discovered from a live call or Swagger.
+
+**Checked against the live host (192.168.3.210:5000) with a real prod account, 2026-08-27 — this endpoint is currently broken server-side:**
+
+1. The path is `/api/v3/Good/GetGoods`; the unversioned one the PDF gives is `404`.
+2. Types the PDF gets wrong. The model binder rejects the documented booleans:
+   `showStockFlg` binds to **`Int64`** (send `0`/`1`, not `false`), `withFi` binds
+   to `Boolean`, `taxPercent` to `Nullable<Decimal>`. A wrong type yields `400`
+   with `"The JSON value could not be converted to …"`.
+3. The body member is still `data`, but a binding failure is reported against the
+   *parameter* name: `{"errors":{"goodSearch":["The goodSearch field is required."]}}`
+   means the `data` object failed to deserialize — read the sibling `$.data.<field>`
+   error for the real cause. Sending a literal `goodSearch` member does not help.
+4. With a well-formed body the call reaches SQL and fails there:
+   `HTTP 500 — "Procedure or function SearchGoods has too many arguments specified."`
+   This happens with any filter, including an empty `data: {}`, so it is not
+   caused by the request: the `SearchGoods` stored procedure in the production
+   database has fewer parameters than this API build passes it. **Orash has to
+   update the database/procedure; nothing on the client side can work around it.**
+5. Separately, every lookup that takes a `currentUserId` rejects it. `GetStorages`
+   and `GetDepartments` answer `HTTP 200` but with a business error row
+   (`storageCode: -1`, `"کد کاربر صحيح نيست ."`) for **every** id tried — including
+   the ids `GET /api/Auth?uniqueID=` itself returns — under all three spellings
+   (`userId`, `currentUserId`, `currentUSerId`). Login does not return a numeric
+   user id at all: `/api/Auth` yields only `{token, refreshToken, name}`, and the
+   JWT carries a GUID `nameid`, not the integer these endpoints want. So there is
+   no documented way to obtain a `currentUserId` the service accepts.
+
+Consequence for this middleware: the reference dropdowns (unit, packing, main and
+second group) are built from `GetGoods` rows and stay empty until this is fixed.
 
 ### 5.3 `POST /api/v3/Good/ChangeGoodRate`
 

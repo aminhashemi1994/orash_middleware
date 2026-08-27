@@ -14,7 +14,6 @@ Private Const LQ_CELLS_NAME As String = "C5,C6,D9"
 Private Const LQ_SEPARATOR As String = " "
 Private Const LQ_TYPE As Long = 1
 Private Const LQ_UNIT_ID_REF As Long = 5
-Private Const LQ_UNIT_PACKING_CODE_REF As Long = 0
 Private Const LQ_MAIN_GROUP_CODE_REF As Long = 1
 
 Private Sub CheckBox1_Click()
@@ -1440,7 +1439,6 @@ Public Function LabelPayloadJson() As String
     out = out & """name"":" & LQ_JsonString(goodName) & ","
     out = out & """type"":" & LQ_TYPE & ","
     out = out & """unitIdRef"":" & LQ_UNIT_ID_REF & ","
-    out = out & """unitPackingCodeRef"":" & LQ_UNIT_PACKING_CODE_REF & ","
     out = out & """mainGroupCodeRef"":" & LQ_MAIN_GROUP_CODE_REF & ","
     out = out & """serial"":" & LQ_JsonString(serial)
     out = out & "}"

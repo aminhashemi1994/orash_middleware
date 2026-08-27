@@ -385,10 +385,13 @@ async function loadLookups() {
 
     // Goods — cache for line-item dropdowns
     const goods = await lookup('goods', {
-      showStockFlg: false, flagDepartment: false, fromDepartment: 0, toDepartment: 0,
+      // Types the live service actually enforces — not the PDF's: showStockFlg
+      // binds to Int64 and rejects a boolean outright (HTTP 400). See
+      // docs/orash-web-service-api.md §5.2.
+      showStockFlg: 0, flagDepartment: true, fromDepartment: 0, toDepartment: 0,
       currentUserId: state.userId, withFi: false,
     });
-    state.goods = rowsFrom(goods.data);
+    state.goods = goodsRowsFrom(goods.data);
     // Same rows the reference dropdowns are built from, so picking up the
     // lookups fills them too — no second GetGoods call.
     for (const field of CODE_REF_FIELDS) fillRefSelect(field, collectRefValues(state.goods, field));
@@ -711,7 +714,7 @@ async function loadGoodsReference() {
   $('goodsRefWrap').open = true;
   $('goodsRefJson').textContent = 'در حال بارگذاری…';
   const goods = await lookup('goods', {
-    showStockFlg: false, flagDepartment: false, fromDepartment: 0, toDepartment: 0,
+    showStockFlg: 0, flagDepartment: true, fromDepartment: 0, toDepartment: 0,
     currentUserId: state.userId, withFi: false,
   });
   state.goods = rowsFrom(goods.data);
@@ -736,6 +739,26 @@ const CODE_REF_FIELDS = [
   { input: 'g_secondGroupCodeRef', title: 'گروه فرعی (secondGroupCodeRef)',
     nameKeys: ['secondGroupName'], codeKeys: ['secondGroupCodeRef', 'secondGroupCode'] },
 ];
+
+/**
+ * The rows inside a GetGoods answer. `rowsFrom` handles the shapes the other
+ * lookups use, but this endpoint's response schema is undocumented (the PDF
+ * gives request bodies only), so a wrapper object around the real array would
+ * come back as a single meaningless "row" and every dropdown would end up
+ * empty. Go one level deeper and take the longest array of objects we find.
+ */
+function goodsRowsFrom(data) {
+  const rows = rowsFrom(data);
+  if (rows.length !== 1 || Array.isArray(rows[0])) return rows;
+  const only = rows[0];
+  if (!only || typeof only !== 'object') return rows;
+  let best = null;
+  for (const v of Object.values(only)) {
+    if (Array.isArray(v) && v.length && typeof v[0] === 'object'
+        && (!best || v.length > best.length)) best = v;
+  }
+  return best || rows;
+}
 
 /** Distinct {name, codes} pairs one field showed across the goods that came back. */
 function collectRefValues(rows, field) {
@@ -823,10 +846,23 @@ async function loadCodeReference() {
   $('codeRefJson').textContent = 'در حال بارگذاری…';
   try {
     const goods = await lookup('goods', {
-      showStockFlg: false, flagDepartment: false, fromDepartment: 0, toDepartment: 0,
+      // Types the live service actually enforces — not the PDF's: showStockFlg
+      // binds to Int64 and rejects a boolean outright (HTTP 400). See
+      // docs/orash-web-service-api.md §5.2.
+      showStockFlg: 0, flagDepartment: true, fromDepartment: 0, toDepartment: 0,
       currentUserId: state.userId, withFi: false,
     });
-    const rows = rowsFrom(goods.data);
+    // The proxy reports an upstream failure in-band (ok:true, upstreamStatus
+    // 4xx/5xx), so an unchecked call turns a broken service into four silently
+    // empty dropdowns. Say what the service said instead.
+    if (goods.upstreamStatus >= 400) {
+      const d = goods.data || {};
+      let detail = d.title || d.message || '';
+      try { detail = JSON.parse(d.detail).Message || detail; } catch { /* not nested JSON */ }
+      const fields = d.errors ? ' — ' + Object.keys(d.errors).join('، ') : '';
+      throw new Error(`سرویس GetGoods خطا داد (HTTP ${goods.upstreamStatus}): ${detail}${fields}`);
+    }
+    const rows = goodsRowsFrom(goods.data);
     state.goods = rows;
     const summary = {};
     for (const field of CODE_REF_FIELDS) {
@@ -835,6 +871,14 @@ async function loadCodeReference() {
       summary[field.title] = values.map((v) => (v.codes.length
         ? { name: v.name, code: v.codes.length === 1 ? v.codes[0] : v.codes }
         : { name: v.name, code: 'نامعلوم — پاسخ سرویس کد را برنمی‌گرداند' }));
+    }
+    // An empty list is almost always a field-name mismatch, not an empty
+    // database — so show what the row actually had, instead of just "—".
+    const empty = Object.entries(summary).filter(([, v]) => !v.length).map(([k]) => k);
+    if (rows.length && empty.length) {
+      summary['— فیلدهای موجود در پاسخ سرویس —'] = Object.keys(rows[0]);
+      summary['— بدون مقدار —'] = empty;
+      summary['— یک سطر نمونه —'] = rows[0];
     }
     $('codeRefJson').textContent = rows.length
       ? JSON.stringify(summary, null, 2)
