@@ -109,6 +109,59 @@
    * different widths (a code, a long Persian name, a service message), which no
    * shared column grid can hold without something overflowing or misaligning.
    */
+  /**
+   * Everything known about one scanned good, laid out so the operator can check
+   * it against the physical label before it is registered.
+   *
+   * The interesting part is the sub-group: the number sent to Orash is derived
+   * from two digits of the goods code, and that derivation is invisible unless
+   * it is spelled out — family name, the Excel code it came from, and the Orash
+   * id it became.
+   */
+  function detailsHtml(item) {
+    const d = item.data || {};
+    const sub = SecondGroup.resolve(d.code || '');
+    const family = sub.status === 'ok' ? sub.matches[0] : null;
+
+    const rows = [
+      ['کد کالا', d.code, 'mono'],
+      ['عنوان', d.name],
+      ['سریال', d.serial, 'mono'],
+      ['متراژ', d.lengthValue != null && d.lengthValue !== '' ? `${d.lengthValue} متر` : null],
+      ['نوع', d.type === 1 ? '۱ — کالا' : d.type === 2 ? '۲ — خدمات' : d.type],
+      ['واحد شمارش', codeWithName(d.unitIdRef, UNIT_NAMES)],
+      ['نوع بسته‌بندی', codeWithName(d.unitPackingCodeRef, PACKING_NAMES)],
+      ['گروه اصلی', codeWithName(d.mainGroupCodeRef, MAIN_GROUP_NAMES)],
+      ['گروه فرعی', family
+        ? `${family.orash} — ${family.name}`
+        : `<span class="bad">${esc(sub.message)}</span>`, 'raw'],
+      ['کد اکسل گروه', sub.excel ? `${sub.excel} (رقم دوم و سوم کد)` : null, 'mono'],
+    ];
+
+    const cells = rows
+      .filter(([, value]) => value !== null && value !== undefined && value !== '')
+      .map(([key, value, cls]) => `
+        <div class="q-fact">
+          <dt>${esc(key)}</dt>
+          <dd class="${cls === 'mono' ? 'mono' : ''}">${cls === 'raw' ? value : esc(String(value))}</dd>
+        </div>`).join('');
+
+    return `<details class="q-details"><summary>مشخصات کامل</summary><dl class="q-facts">${cells}</dl></details>`;
+  }
+
+  /** "5 — متر" when the number is one we have a name for, else just the number. */
+  function codeWithName(code, names) {
+    if (code === null || code === undefined || code === '') return null;
+    const name = names[code];
+    return name ? `${code} — ${name}` : String(code);
+  }
+
+  // The fixed codes' names, so the queue can spell out what a number means.
+  // They mirror LOCKED_GOOD_FIELDS in app.js.
+  const UNIT_NAMES = { 5: 'متر' };
+  const PACKING_NAMES = { 1: 'کلاف' };
+  const MAIN_GROUP_NAMES = { 1: 'نوع محصول' };
+
   function renderQueue() {
     const body = el('scanQueueBody');
     body.innerHTML = '';
@@ -132,6 +185,7 @@
             <span class="mono">${esc(item.at)}</span>
             ${item.message ? `<span class="dot">•</span><span class="q-msg">${esc(item.message)}</span>` : ''}
           </div>
+          ${detailsHtml(item)}
         </div>
         <div class="q-side">
           <span class="pill ${kind}">${esc(label)}</span>

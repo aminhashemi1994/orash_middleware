@@ -955,64 +955,120 @@ body.mobile .camera-wrap video { max-height: none; }
    number input kept underneath for codes the service never showed us. */
 .ref-select { margin-bottom: 6px; }
 
-
-
-/* The sub-group mapping table. */
+/* ---- sub-group mapping table ------------------------------------------- */
 .table-scroll { overflow-x: auto; }
-.ref-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
-.ref-table th, .ref-table td { padding: .35rem .6rem; border-bottom: 1px solid var(--line, #e5e7eb); text-align: right; }
-.ref-table th { position: sticky; top: 0; background: var(--muted-bg, #f4f5f7); }
-.ref-table td:nth-child(2), .ref-table td:nth-child(3) { font-variant-numeric: tabular-nums; text-align: left; }
+.ref-table { width: 100%; border-collapse: collapse; font-size: .9rem; color: var(--text); }
+.ref-table th, .ref-table td {
+  padding: .4rem .6rem;
+  border-bottom: 1px solid var(--edge-2);
+  text-align: right;
+}
+.ref-table th {
+  position: sticky; top: 0;
+  background: var(--bg-soft);
+  color: var(--muted);
+  font-weight: 600;
+}
+.ref-table td:nth-child(2), .ref-table td:nth-child(3) {
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
 /* Two families share this Excel code, so it cannot be resolved automatically. */
-.ref-table tr.shared-excel td { background: var(--warn-bg, #fff7ed); }
+.ref-table tr.shared-excel td { background: var(--busy-bg); }
 .ref-table tr.shared-excel td:nth-child(2)::after { content: ' ⚠'; }
 
-/* The editable sub-group table in settings. */
+/* ---- the editable table in settings ------------------------------------ */
 .edit-table td { vertical-align: middle; }
 .edit-table td.narrow { width: 1%; white-space: nowrap; }
-.edit-table input { width: 100%; min-width: 4.5rem; padding: .3rem .45rem; }
+.edit-table input {
+  width: 100%; min-width: 4.5rem;
+  padding: .3rem .45rem;
+  color: var(--text);
+  background: var(--glass-2);
+  border: 1px solid var(--edge);
+  border-radius: var(--r-s);
+}
+.edit-table input:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
 .edit-table td.narrow input { width: 5.5rem; text-align: left; }
-.edit-table .danger { color: var(--bad, #b42318); padding: .25rem .6rem; }
+.edit-table .danger { color: var(--bad); padding: .25rem .6rem; }
 #sgStatus { white-space: pre-line; }
 
-/* ---- fixed codes: shown as quiet chips, not as form fields the eye reads
-   as editable. One line each: what it is, then the value in force. ---- */
+/* ---- fixed codes --------------------------------------------------------
+   Shown as quiet chips rather than form fields, so the eye does not read them
+   as editable. One line each: what it is, then the value in force. */
 .fixed-codes {
   margin-top: 1rem;
-  padding: .75rem .85rem;
-  border: 1px solid var(--line, #e5e7eb);
-  border-radius: 10px;
-  background: var(--muted-bg, #fafafa);
+  padding: .8rem .9rem;
+  border: 1px solid var(--edge-2);
+  border-radius: var(--r-m);
+  background: var(--glass-2);
 }
 .fixed-codes-head {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: .75rem;
-  margin-bottom: .6rem;
+  margin-bottom: .7rem;
   font-size: .85rem;
   font-weight: 600;
-  color: var(--muted-fg, #6b7280);
+  color: var(--muted);
 }
 .fixed-codes-head .hint { font-weight: 400; }
 .chips {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
-  gap: .5rem .75rem;
+  gap: .7rem .9rem;
   margin: 0;
 }
-.chip { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
-.chip dt { font-size: .78rem; color: var(--muted-fg, #6b7280); }
+.chip { display: flex; flex-direction: column; gap: .2rem; min-width: 0; }
+.chip dt {
+  font-size: .78rem;
+  color: var(--muted);
+  display: flex; align-items: baseline; gap: .4rem; flex-wrap: wrap;
+}
 .chip dd {
   margin: 0;
+  color: var(--text);
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
 .chip-wide { grid-column: 1 / -1; }
 /* Sub-group could not be derived: the operator must fix the goods code. */
-.chip dd.bad { color: var(--bad, #b42318); }
-.chip .ref-select { margin-top: .25rem; }
+.chip dd.bad { color: var(--bad); font-weight: 500; }
+.chip .ref-select { margin-top: .3rem; }
 
 /* Diagnostics are collapsed by default: useful, but not the everyday path. */
-.tools > summary { color: var(--muted-fg, #6b7280); font-size: .9rem; }
+.tools > summary { color: var(--muted); font-size: .9rem; }
 .tools > .row { margin-top: .6rem; }
+
+/* ---- one scanned good, in full ------------------------------------------
+   Collapsed by default: the queue stays scannable, and a row opens when the
+   operator wants to check it against the label in their hand. */
+.q-details { margin-top: .5rem; }
+.q-details > summary {
+  color: var(--muted);
+  font-size: .82rem;
+  cursor: pointer;
+}
+.q-details[open] > summary { margin-bottom: .5rem; }
+.q-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: .5rem .9rem;
+  margin: 0;
+  padding: .7rem .8rem;
+  border: 1px solid var(--edge-2);
+  border-radius: var(--r-s);
+  background: var(--glass-2);
+}
+.q-fact { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.q-fact dt { font-size: .76rem; color: var(--muted); }
+.q-fact dd {
+  margin: 0;
+  color: var(--text);
+  font-size: .88rem;
+  overflow-wrap: anywhere;
+}
+.q-fact dd.mono { font-variant-numeric: tabular-nums; }
+.q-fact dd .bad { color: var(--bad); }
