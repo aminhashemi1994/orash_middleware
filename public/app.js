@@ -414,11 +414,10 @@ const gNum = (id) => (gVal(id) === '' ? undefined : Number(gVal(id)));
  */
 const LOCKED_GOOD_FIELDS = {
   unitIdRef: { value: 5, label: 'متر' },
-  // Orash rejected 1 with «کد بسته بندي صحيح نيست» on 2026-08-27, so the real
-  // code for کلاف is not 1 and is not known. The field is optional in
-  // CreateGood, so it is left out entirely until accounting supplies the
-  // number: value null means "do not send".
-  unitPackingCodeRef: { value: null, label: 'ارسال نمی‌شود — کد معتبر هنوز مشخص نیست' },
+  // 2, not 1: Orash rejected 1 outright («کد بسته بندي صحيح نيست»), and a sweep
+  // of the packing codes it does accept (2..37, minus 4) plus the number from
+  // accounting settled کلاف at 2.
+  unitPackingCodeRef: { value: 2, label: 'کلاف' },
   mainGroupCodeRef: { value: 1, label: 'نوع محصول' },
 };
 
