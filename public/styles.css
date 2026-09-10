@@ -494,7 +494,7 @@ body::after {
   margin-bottom: 14px;
 }
 .section-head h2 { margin: 0; font-size: 15px; font-weight: 700; }
-.section-actions { display: flex; gap: 9px; flex-wrap: wrap; }
+.section-actions { display: flex; gap: 9px; flex-wrap: wrap; align-items: center; }
 
 .queue { display: grid; gap: 8px; }
 

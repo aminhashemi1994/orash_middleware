@@ -109,6 +109,23 @@ api -X POST "$BASE/api/v3/Good/CreateGood" -H "$AUTH" -d "{
 }"
 echo '   ^ خطای اعتبارسنجی اینجا هم به نام پارامتر (good) نسبت داده می‌شود نه به فیلد واقعی'
 
+hr 'CreateInvoice به‌کلی از کار افتاده — رسید و حواله انبار ثبت نمی‌شود'
+api -X POST "$BASE/api/v3/Invoice/CreateInvoice" -H "$AUTH" -d "{
+  \"uniqueID\": \"$PROD\",
+  \"data\": {
+    \"createuser\": 10, \"createdate\": \"1405/06/19\", \"createtime\": \"11:40\",
+    \"departmentCode\": 1, \"visitorId\": 0,
+    \"value\": [{
+      \"hid\": \"1\", \"ft\": \"11\", \"pc\": \"120001\", \"hsc\": \"30\",
+      \"fd\": [{ \"hid\": \"1\", \"iid\": \"1\", \"gs\": \"112420000031506404071\",
+                 \"gc\": \"180\", \"fp\": \"0\" }]
+    }]
+  }
+}"
+echo '   ^ انتظار: HTTP 500 — SP_Insert_Factor_FromXml expects parameter @VisitorId'
+echo '     visitorId فرستاده شده و در مستندات هم اختیاری است، ولی به پروسیجر نمی‌رسد.'
+echo '     با ft برابر ۱۱ (رسید)، ۷ (حواله) و ۰ (فاکتور فروش) یکسان است.'
+
 hr 'یادداشت: بریده‌شدن کد ۲۱ رقمی کالا (قابل بازتولید نیست بدون ثبت واقعی)'
 cat <<'NOTE'
 این مورد با ثبت واقعی روی پایگاه تولید مشاهده شده و در این اسکریپت بازتولید

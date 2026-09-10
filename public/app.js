@@ -490,6 +490,25 @@ function showStatus(elId, kind, title, detailHtml) {
 
 function showRaw(obj) { $('rawResponse').textContent = JSON.stringify(obj, null, 2); }
 
+/**
+ * What the service said when it failed outside its own envelope.
+ *
+ * A 500 carries ASP.NET's ProblemDetails, whose `detail` is itself a JSON
+ * string holding the real message — usually the SQL error. Without unwrapping
+ * it the panel could only report «responseCode undefined», which tells the
+ * operator nothing and hides a service fault behind what looks like our bug.
+ */
+function upstreamFault(r) {
+  const d = r.data || {};
+  if (typeof d.detail === 'string') {
+    try {
+      const inner = JSON.parse(d.detail);
+      if (inner && inner.Message) return inner.Message;
+    } catch { return d.detail; }
+  }
+  return d.title || d.message || '';
+}
+
 // Parse the shared Orash response envelope into a normalized result.
 function interpret(r) {
   const data = r.data || {};
@@ -789,7 +808,8 @@ async function submitDoc() {
   if (!r.ok) { docSetStatus('ناموفق: ' + (r.error || 'خطای شبکه/پروکسی'), 'bad'); return; }
 
   const res = interpret(r);
-  const message = res.items.map((it) => it.errorMessage).filter(Boolean).join(' / ') || res.data.message || '';
+  const message = res.items.map((it) => it.errorMessage).filter(Boolean).join(' / ')
+    || upstreamFault(r) || res.data.message || '';
   if (res.ok) {
     docSetStatus(' ', 'good', `<strong>${escHtml(title)} ثبت شد ✓</strong><p>${escHtml(message)}</p>`
       + `<p class="mono">${escHtml(res.httpLine)}</p>`);

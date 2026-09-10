@@ -1203,6 +1203,23 @@ Full request skeleton:
 Success: `content: [{ "content": "71012", "errorCode": 0, "errorMessage": "فاکتور با شماره 71012 درج شد" }]`
 Failure example: `errorCode: -1`, `errorMessage: "کد کالا صحيح نيست ."`
 
+**`CreateInvoice` is broken on this server — confirmed on production, 2026-09-10.**
+Every call, whatever `ft`, fails before anything is written:
+
+    HTTP 500 — Procedure or function 'SP_Insert_Factor_FromXml'
+               expects parameter '@VisitorId', which was not supplied.
+
+`visitorId` is documented as optional at `data` level, and supplying it changes
+nothing: `0`, `1`, `"0"`, `VisitorId`, `visitorID`, and every header-level guess
+(`sp`, `vi`, `stp`) draw the identical error, so the value never reaches the
+procedure. Tested with `ft` 11 (رسید انبار), 7 (حواله انبار) and 0 (فاکتور فروش)
+— the fault is in the endpoint, not in a document type.
+
+This is the same class of fault as the `SearchGoods` one: the stored procedure in
+the database and the API build that calls it are out of step. Orash has to fix
+it; no request shape works around it, so warehouse receipts and issues cannot be
+filed through the web service until they do.
+
 ### 11.2 `POST /api/v3/Invoice/SearchInvoice`
 
 Searches invoices. All parameters marked required; no data types are given in the source table.
