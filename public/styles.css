@@ -1127,3 +1127,66 @@ body.mobile .camera-wrap video { max-height: none; }
 .modal .chips { margin-bottom: 14px; }
 .modal .hint { margin: 0 0 16px; }
 .modal-actions { justify-content: flex-start; flex-wrap: wrap; }
+
+/* ---- searchable reference field ----------------------------------------
+   The browser's own datalist popup cannot be styled, ignores the page's
+   direction and crushes a code and a Persian name onto one line — so the list
+   is drawn here instead: RTL, two columns, and legible at a glance. */
+.combo { position: relative; }
+.combo > input { width: 100%; }
+.combo-list {
+  position: absolute;
+  z-index: 40;
+  inset-inline: 0;
+  top: calc(100% + 4px);
+  max-height: 17rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  direction: rtl;
+  text-align: right;
+  background: var(--bg-soft);
+  border: 1px solid var(--edge);
+  border-radius: var(--r-s);
+  box-shadow: var(--sh-2);
+  scrollbar-width: thin;
+  scrollbar-color: var(--edge) transparent;
+}
+.combo-list::-webkit-scrollbar { width: 8px; }
+.combo-list::-webkit-scrollbar-thumb { background: var(--edge); border-radius: 99px; }
+.combo-item {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.combo-item.active { background: var(--glass-3); }
+.combo-code {
+  font-variant-numeric: tabular-nums;
+  direction: ltr;
+  text-align: left;
+  color: var(--a2);
+  font-size: 12px;
+}
+.combo-name {
+  color: var(--text);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.combo-empty { padding: 10px; color: var(--muted); font-size: 12.5px; }
+
+/* A table with nothing in it should say so, not look broken. */
+.table-empty td {
+  padding: 18px 10px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+/* A field that spans the grid — the account box and the description. */
+.span-all { grid-column: 1 / -1; }

@@ -195,62 +195,11 @@
         </div>
       </section>
 
-      <!-- ============ warehouse receipt / issue ============ -->
-      <section class="panel">
-        <div class="section-head">
-          <h2>رسید و حواله انبار</h2>
-          <span id="docState" class="pill">—</span>
-        </div>
-        <p class="hint">سطرها از صف اسکن ساخته می‌شوند: هر اسکن یک کلاف است، و کلاف‌های هم‌کد با متراژ یکسان در یک سطر جمع می‌شوند.</p>
-
-        <div class="grid">
-          <label><span class="lbl-row">نوع سند</span>
-            <select id="d_kind">
-              <option value="receipt">رسید انبار</option>
-              <option value="issue">حواله انبار</option>
-            </select>
-          </label>
-          <label><span class="lbl-row">انبار <em>hsc</em></span>
-            <input id="d_storage" list="d_storageList" placeholder="جست‌وجو: کد یا نام انبار" />
-            <datalist id="d_storageList"></datalist>
-          </label>
-          <label><span class="lbl-row">شعبه <em>departmentCode</em></span>
-            <input id="d_department" list="d_departmentList" placeholder="جست‌وجو: کد یا نام شعبه" />
-            <datalist id="d_departmentList"></datalist>
-          </label>
-          <label><span class="lbl-row">کاربر ثبت‌کننده <em>createuser</em></span>
-            <input id="d_user" list="d_userList" placeholder="جست‌وجو: کد یا نام کاربر" />
-            <datalist id="d_userList"></datalist>
-          </label>
-          <label class="span-all"><span class="lbl-row">حساب تفصیلی <em>pc</em></span>
-            <input id="d_account" list="d_accountList" placeholder="جست‌وجو: کد یا نام حساب — مثلاً: 120001 — رفاه ناظران" />
-            <datalist id="d_accountList"></datalist>
-          </label>
-          <label class="span-all"><span class="lbl-row">شرح سند <em>اختیاری</em></span>
-            <input id="d_description" type="text" placeholder="مثلاً: رسید تولید شیفت صبح" />
-          </label>
-        </div>
-
-        <div class="row">
-          <button id="btnDocLoad" class="ghost" disabled>بارگذاری فهرست‌ها</button>
-          <button id="btnDocPreview" class="ghost">به‌روزرسانی سطرها</button>
-          <button id="btnDocSubmit" class="primary" disabled>ثبت سند</button>
-        </div>
-
-        <div class="table-scroll">
-          <table id="docTable" class="ref-table">
-            <thead><tr><th>کد کالا</th><th>عنوان</th><th>بسته‌بندی</th><th>متراژ هر بسته</th><th>تعداد بسته</th><th>مجموع متراژ</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-        <div id="docStatus" class="status hidden"></div>
-      </section>
-
       <!-- ============ register a good ============ -->
       <section class="panel">
         <div class="section-head">
           <h2>ثبت کالا</h2>
-          <span class="hint">فقط کد، عنوان و واحد شمارش ثبت می‌شود.</span>
+          <span class="hint">پیش از ثبت بررسی می‌شود که کالا از قبل در اوراش هست یا نه.</span>
         </div>
 
         <div class="grid">
@@ -276,6 +225,69 @@
           <button id="btnSubmitGood" class="primary" disabled>ثبت کالا</button>
         </div>
         <div id="goodStatus" class="status hidden"></div>
+      </section>
+
+      <!-- ============ warehouse receipt / issue ============ -->
+      <section class="panel">
+        <div class="section-head">
+          <h2>رسید و حواله انبار</h2>
+          <span id="docState" class="pill">—</span>
+        </div>
+        <p class="hint">سطرها از صف اسکن ساخته می‌شوند: هر اسکن یک کلاف است، و کلاف‌های هم‌کد با متراژ یکسان در یک سطر جمع می‌شوند.</p>
+
+        <div class="grid">
+          <label><span class="lbl-row">نوع سند</span>
+            <select id="d_kind">
+              <option value="receipt">رسید انبار</option>
+              <option value="issue">حواله انبار</option>
+            </select>
+          </label>
+          <label><span class="lbl-row">انبار <em>hsc</em></span>
+            <div class="combo">
+              <input id="d_storage" type="text" autocomplete="off" role="combobox"
+                aria-expanded="false" aria-autocomplete="list" placeholder="جست‌وجو: کد یا نام انبار" />
+              <ul class="combo-list hidden" id="d_storage_list" role="listbox"></ul>
+            </div>
+          </label>
+          <label><span class="lbl-row">شعبه <em>departmentCode</em></span>
+            <div class="combo">
+              <input id="d_department" type="text" autocomplete="off" role="combobox"
+                aria-expanded="false" aria-autocomplete="list" placeholder="جست‌وجو: کد یا نام شعبه" />
+              <ul class="combo-list hidden" id="d_department_list" role="listbox"></ul>
+            </div>
+          </label>
+          <label><span class="lbl-row">کاربر ثبت‌کننده <em>createuser</em></span>
+            <div class="combo">
+              <input id="d_user" type="text" autocomplete="off" role="combobox"
+                aria-expanded="false" aria-autocomplete="list" placeholder="جست‌وجو: کد یا نام کاربر" />
+              <ul class="combo-list hidden" id="d_user_list" role="listbox"></ul>
+            </div>
+          </label>
+          <label class="span-all"><span class="lbl-row">حساب تفصیلی <em>pc</em></span>
+            <div class="combo">
+              <input id="d_account" type="text" autocomplete="off" role="combobox"
+                aria-expanded="false" aria-autocomplete="list" placeholder="جست‌وجو: کد یا نام حساب — مثلاً: 120001 رفاه ناظران" />
+              <ul class="combo-list hidden" id="d_account_list" role="listbox"></ul>
+            </div>
+          </label>
+          <label class="span-all"><span class="lbl-row">شرح سند <em>اختیاری</em></span>
+            <input id="d_description" type="text" placeholder="مثلاً: رسید تولید شیفت صبح" />
+          </label>
+        </div>
+
+        <div class="row">
+          <button id="btnDocLoad" class="ghost" disabled>بارگذاری انبار و حساب‌ها</button>
+          <button id="btnDocPreview" class="ghost">ساخت سطرها از صف اسکن</button>
+          <button id="btnDocSubmit" class="primary" disabled>ثبت سند</button>
+        </div>
+
+        <div class="table-scroll">
+          <table id="docTable" class="ref-table">
+            <thead><tr><th>کد کالا</th><th>عنوان</th><th>بسته‌بندی</th><th>متراژ هر بسته</th><th>تعداد بسته</th><th>مجموع متراژ</th></tr></thead>
+            <tbody><tr class="table-empty"><td colspan="6">هنوز سطری ساخته نشده — بعد از اسکن، «ساخت سطرها از صف اسکن» را بزنید.</td></tr></tbody>
+          </table>
+        </div>
+        <div id="docStatus" class="status hidden"></div>
       </section>
 
       <!-- ============ scan sources ============ -->
@@ -408,6 +420,32 @@
           <span class="hint">با خروج، توکن پاک می‌شود و تا ورود بعدی هیچ اسکنی ثبت نمی‌شود.</span>
         </div>
       </section>
+      <details class="panel diag">
+        <summary>عیب‌یابی</summary>
+        <p class="hint">برای وقتی چیزی درست کار نمی‌کند. در کار روزمره لازم نیست.</p>
+        <div class="row">
+          <button id="btnPreviewGood" class="ghost">بدنه‌ی درخواست ثبت کالا</button>
+          <button id="btnLoadGoodsRef" class="ghost" disabled>کالاهای موجود</button>
+          <button id="btnLoadCodeRef" class="ghost" disabled>مقادیر مرجع سرویس</button>
+        </div>
+        <details id="goodPreviewWrap" class="hidden"><summary>بدنه درخواست</summary><pre id="goodPreviewJson"></pre></details>
+        <details id="goodsRefWrap" class="hidden"><summary>کالاهای موجود</summary><pre id="goodsRefJson">—</pre></details>
+        <details id="codeRefWrap" class="hidden"><summary>مقادیر مرجع سرویس</summary><pre id="codeRefJson">—</pre></details>
+        <details id="scanRawWrap" class="hidden"><summary>داده خام آخرین اسکن</summary><pre id="scanRawJson"></pre></details>
+        <details><summary>پاسخ خام آخرین درخواست</summary><pre id="rawResponse">—</pre></details>
+      </details>
+    </div>
+
+    <!-- ===================== TAB: CreateInvoice ===================== -->
+    <!-- ===================== TAB: settings ===================== -->
+    <div id="tab-settings" class="tabpanel hidden">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">تنظیمات</p>
+          <h1>مقادیر ثابت سامانه</h1>
+          <p class="lede">جدول‌ها و پیش‌فرض‌هایی که ثبت کالا و سند انبار از آن‌ها می‌خوانند. تغییرات روی سرور ذخیره می‌شوند و با ری‌استارت از بین نمی‌روند.</p>
+        </div>
+      </header>
       <section class="panel">
         <div class="section-head">
           <h2>پیش‌فرض‌های سند انبار</h2>
@@ -423,20 +461,36 @@
             </select>
           </label>
           <label><span class="lbl-row">انبار <em>hsc</em></span>
-            <input id="dd_storage" list="d_storageList" placeholder="جست‌وجو: کد یا نام انبار" />
+            <div class="combo">
+              <input id="dd_storage" type="text" autocomplete="off" role="combobox"
+                aria-expanded="false" aria-autocomplete="list" placeholder="جست‌وجو: کد یا نام انبار" />
+              <ul class="combo-list hidden" id="dd_storage_list" role="listbox"></ul>
+            </div>
           </label>
           <label><span class="lbl-row">شعبه <em>departmentCode</em></span>
-            <input id="dd_department" list="d_departmentList" placeholder="جست‌وجو: کد یا نام شعبه" />
+            <div class="combo">
+              <input id="dd_department" type="text" autocomplete="off" role="combobox"
+                aria-expanded="false" aria-autocomplete="list" placeholder="جست‌وجو: کد یا نام شعبه" />
+              <ul class="combo-list hidden" id="dd_department_list" role="listbox"></ul>
+            </div>
           </label>
           <label><span class="lbl-row">کاربر ثبت‌کننده <em>createuser</em></span>
-            <input id="dd_user" list="d_userList" placeholder="جست‌وجو: کد یا نام کاربر" />
+            <div class="combo">
+              <input id="dd_user" type="text" autocomplete="off" role="combobox"
+                aria-expanded="false" aria-autocomplete="list" placeholder="جست‌وجو: کد یا نام کاربر" />
+              <ul class="combo-list hidden" id="dd_user_list" role="listbox"></ul>
+            </div>
           </label>
           <label class="span-all"><span class="lbl-row">حساب تفصیلی <em>pc</em></span>
-            <input id="dd_account" list="d_accountList" placeholder="جست‌وجو: کد یا نام حساب" />
+            <div class="combo">
+              <input id="dd_account" type="text" autocomplete="off" role="combobox"
+                aria-expanded="false" aria-autocomplete="list" placeholder="جست‌وجو: کد یا نام حساب" />
+              <ul class="combo-list hidden" id="dd_account_list" role="listbox"></ul>
+            </div>
           </label>
         </div>
         <div class="row">
-          <button id="ddLoad" class="ghost" disabled>بارگذاری فهرست‌ها</button>
+          <button id="ddLoad" class="ghost" disabled>بارگذاری انبار و حساب‌ها</button>
           <button id="ddSave" class="primary">ذخیره</button>
           <button id="ddClear" class="ghost">پاک کردن همه</button>
         </div>
@@ -464,32 +518,6 @@
         <div id="pkStatus" class="status hidden"></div>
       </section>
 
-      <details class="panel diag">
-        <summary>عیب‌یابی</summary>
-        <p class="hint">برای وقتی چیزی درست کار نمی‌کند. در کار روزمره لازم نیست.</p>
-        <div class="row">
-          <button id="btnPreviewGood" class="ghost">بدنه‌ی درخواست ثبت کالا</button>
-          <button id="btnLoadGoodsRef" class="ghost" disabled>کالاهای موجود</button>
-          <button id="btnLoadCodeRef" class="ghost" disabled>مقادیر مرجع سرویس</button>
-        </div>
-        <details id="goodPreviewWrap" class="hidden"><summary>بدنه درخواست</summary><pre id="goodPreviewJson"></pre></details>
-        <details id="goodsRefWrap" class="hidden"><summary>کالاهای موجود</summary><pre id="goodsRefJson">—</pre></details>
-        <details id="codeRefWrap" class="hidden"><summary>مقادیر مرجع سرویس</summary><pre id="codeRefJson">—</pre></details>
-        <details id="scanRawWrap" class="hidden"><summary>داده خام آخرین اسکن</summary><pre id="scanRawJson"></pre></details>
-        <details><summary>پاسخ خام آخرین درخواست</summary><pre id="rawResponse">—</pre></details>
-      </details>
-    </div>
-
-    <!-- ===================== TAB: CreateInvoice ===================== -->
-    <!-- ===================== TAB: settings ===================== -->
-    <div id="tab-settings" class="tabpanel hidden">
-      <header class="hero">
-        <div>
-          <p class="eyebrow">تنظیمات</p>
-          <h1>ورودی‌های اکسل</h1>
-          <p class="lede">جدولی که رقم دوم و سوم کد ۲۱ رقمی را به گروه فرعی اوراش ترجمه می‌کند.</p>
-        </div>
-      </header>
       <section class="panel">
         <div class="section-head">
           <h2>تنظیمات گروه فرعی</h2>

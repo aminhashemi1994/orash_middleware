@@ -48,6 +48,13 @@ const secondGroup = require('./public/second-group.js');
 const packing = require('./public/packing.js');
 const secondGroupStore = require('./lib/second-group-store');
 
+// Settings must survive a restart, so make sure they have somewhere to live
+// before anything tries to save one.
+const dataDir = secondGroupStore.ensureDataDir();
+if (!dataDir.ok) {
+  console.warn(`[settings] ⚠ ${dataDir.dir} قابل نوشتن نیست (${dataDir.error}) — تنظیمات ذخیره نخواهد شد`);
+}
+
 // Apply any saved sub-group table before the first label can be built.
 const secondGroupsAtBoot = secondGroupStore.read();
 const packingsAtBoot = secondGroupStore.readPackings();

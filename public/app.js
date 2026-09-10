@@ -461,41 +461,130 @@ const LOCKED_GOOD_FIELDS = MODE_DEFAULTS.L;
 const withCode = (code, name) => `${code} — ${name}`;
 
 /**
- * Fill one searchable box's list. A `<datalist>` rather than a `<select>`: with
- * sixteen warehouses and two thousand accounts, the operator has to be able to
- * type a fragment of either the code or the name and see it narrow.
+ * A searchable reference field.
+ *
+ * Not a `<datalist>`: the browser's own popup takes no styling, ignores the
+ * page's direction, and shows a code and a Persian name jammed into one line.
+ * This is a list this panel draws itself — right-to-left, code and name in
+ * their own columns, keyboard-navigable, and matching on either half.
  */
-function fillCodeList(listId, rows, codeKey, nameKey) {
-  const list = $(listId);
-  if (!list) return;
-  list.innerHTML = '';
-  for (const row of rows) {
-    const o = document.createElement('option');
-    o.value = withCode(row[codeKey], row[nameKey]);
-    list.appendChild(o);
-  }
+const combos = new Map();
+
+function combo(inputId) {
+  if (combos.has(inputId)) return combos.get(inputId);
+  const input = $(inputId);
+  const list = $(inputId + '_list');
+  const api = { rows: [], code: '', shown: [], active: -1 };
+
+  const label = (row) => `${row.code} — ${row.name}`;
+
+  const close = () => {
+    list.classList.add('hidden');
+    input.setAttribute('aria-expanded', 'false');
+    api.active = -1;
+  };
+
+  const choose = (row) => {
+    api.code = String(row.code);
+    input.value = label(row);
+    close();
+  };
+
+  const render = (query) => {
+    const q = String(query || '').trim().toLowerCase();
+    // Cap what is drawn: two thousand accounts would otherwise be two thousand
+    // elements on every keystroke.
+    api.shown = (q ? api.rows.filter((r) => label(r).toLowerCase().includes(q)) : api.rows).slice(0, 200);
+    list.innerHTML = '';
+    if (!api.shown.length) {
+      const li = document.createElement('li');
+      li.className = 'combo-empty';
+      li.textContent = api.rows.length ? 'موردی پیدا نشد' : 'فهرست بارگذاری نشده';
+      list.appendChild(li);
+    }
+    api.shown.forEach((row, i) => {
+      const li = document.createElement('li');
+      li.className = 'combo-item';
+      li.setAttribute('role', 'option');
+      li.innerHTML = `<span class="combo-code">${escHtml(row.code)}</span>`
+        + `<span class="combo-name">${escHtml(row.name)}</span>`;
+      li.addEventListener('mousedown', (e) => { e.preventDefault(); choose(row); });
+      li.addEventListener('mouseenter', () => setActive(i));
+      list.appendChild(li);
+    });
+    list.classList.remove('hidden');
+    input.setAttribute('aria-expanded', 'true');
+    setActive(api.shown.length ? 0 : -1);
+  };
+
+  const setActive = (i) => {
+    api.active = i;
+    [...list.querySelectorAll('.combo-item')].forEach((el, n) => {
+      el.classList.toggle('active', n === i);
+      if (n === i) el.scrollIntoView({ block: 'nearest' });
+    });
+  };
+
+  input.addEventListener('input', () => { api.code = ''; render(input.value); });
+  input.addEventListener('focus', () => render(input.value));
+  input.addEventListener('blur', () => setTimeout(close, 120));
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (list.classList.contains('hidden')) return render(input.value);
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      const next = (api.active + step + api.shown.length) % (api.shown.length || 1);
+      setActive(next);
+    } else if (e.key === 'Enter') {
+      if (api.active >= 0 && api.shown[api.active]) { e.preventDefault(); choose(api.shown[api.active]); }
+    } else if (e.key === 'Escape') {
+      close();
+    }
+  });
+
+  api.setRows = (rows, codeKey, nameKey) => {
+    api.rows = rows.map((r) => ({ code: r[codeKey], name: r[nameKey] }));
+    // Keep whatever was already chosen, now that its label can be resolved.
+    if (api.code) api.setCode(api.code);
+  };
+  api.setCode = (code) => {
+    if (code === undefined || code === null || code === '') return;
+    api.code = String(code);
+    const hit = api.rows.find((r) => String(r.code) === api.code);
+    input.value = hit ? label(hit) : api.code;
+  };
+  /** The chosen code — or, if the operator typed a bare code, that. */
+  api.getCode = () => api.code || codeFromLabel(input.value);
+  api.clear = () => { api.code = ''; input.value = ''; };
+
+  combos.set(inputId, api);
+  return api;
 }
 
-/** Point a searchable box at a code, showing its full «code — name» label. */
-function setCodeValue(inputId, listId, code) {
-  const el = $(inputId);
-  if (!el || code === undefined || code === null || code === '') return;
-  const hit = [...$(listId).options].find((o) => codeFromLabel(o.value) === String(code));
-  el.value = hit ? hit.value : String(code);
+/** Every reference field, and the list each one draws from. */
+const COMBO_FIELDS = {
+  storageCode: { doc: 'd_storage', settings: 'dd_storage', route: 'storages', codeKey: 'storageCode', nameKey: 'storageName' },
+  departmentCode: { doc: 'd_department', settings: 'dd_department', route: 'departments', codeKey: 'departmentCode', nameKey: 'departmentName' },
+  createuser: { doc: 'd_user', settings: 'dd_user', route: 'users', codeKey: 'id', nameKey: 'fullName' },
+  accountCode: { doc: 'd_account', settings: 'dd_account', route: 'customers', codeKey: 'code', nameKey: 'name' },
+};
+
+/** Read every list once and hand the same rows to both forms. */
+async function loadComboRows() {
+  const entries = Object.entries(COMBO_FIELDS);
+  const results = await Promise.all(entries.map(([, f]) => listFor(f.route)));
+  entries.forEach(([, f], i) => {
+    for (const id of [f.doc, f.settings]) combo(id).setRows(results[i], f.codeKey, f.nameKey);
+  });
+  return Object.fromEntries(entries.map(([key], i) => [key, results[i]]));
 }
 
 async function loadDocLookups() {
   if (!state.token) { alert('ابتدا وارد شوید.'); return; }
   setPill($('docState'), 'در حال بارگذاری…', 'busy');
   try {
-    const [storages, departments, users, accounts] = await Promise.all([
-      listFor('storages'), listFor('departments'), listFor('users'), listFor('customers'),
-    ]);
-    fillCodeList('d_storageList', storages, 'storageCode', 'storageName');
-    fillCodeList('d_departmentList', departments, 'departmentCode', 'departmentName');
-    fillCodeList('d_userList', users, 'id', 'fullName');
-    fillCodeList('d_accountList', accounts, 'code', 'name');
-    setPill($('docState'), `${storages.length} انبار · ${accounts.length} تفصیلی`, 'ok');
+    const rows = await loadComboRows();
+    setPill($('docState'), `${rows.storageCode.length} انبار · ${rows.accountCode.length} تفصیلی`, 'ok');
     applyDocDefaults();
     docSetStatus('', '');
   } catch (err) {
@@ -542,6 +631,15 @@ function renderDocLines() {
   const { lines, errors } = WarehouseDoc.aggregate(docSourceRows());
   const body = document.querySelector('#docTable tbody');
   body.innerHTML = '';
+  if (!lines.length) {
+    const tr = document.createElement('tr');
+    tr.className = 'table-empty';
+    const td = document.createElement('td');
+    td.colSpan = 6;
+    td.textContent = 'سطری ساخته نشد — صف اسکن خالی است یا هیچ ردیفی کامل نبود.';
+    tr.appendChild(td);
+    body.appendChild(tr);
+  }
   for (const l of lines) {
     const tr = document.createElement('tr');
     for (const cell of [l.code, l.name, withCode(l.packingId, l.packingTitle),
@@ -570,10 +668,10 @@ async function submitDoc() {
 
   const kind = $('d_kind').value;
   const missing = [];
-  const storageCode = codeFromLabel($('d_storage').value); if (!storageCode) missing.push('انبار');
-  const departmentCode = codeFromLabel($('d_department').value); if (!departmentCode) missing.push('شعبه');
-  const createuser = codeFromLabel($('d_user').value); if (!createuser) missing.push('کاربر ثبت‌کننده');
-  const accountCode = codeFromLabel($('d_account').value); if (!accountCode) missing.push('حساب تفصیلی');
+  const storageCode = combo('d_storage').getCode(); if (!storageCode) missing.push('انبار');
+  const departmentCode = combo('d_department').getCode(); if (!departmentCode) missing.push('شعبه');
+  const createuser = combo('d_user').getCode(); if (!createuser) missing.push('کاربر ثبت‌کننده');
+  const accountCode = combo('d_account').getCode(); if (!accountCode) missing.push('حساب تفصیلی');
   if (missing.length) {
     docSetStatus('این موارد انتخاب نشده‌اند: ' + missing.join('، '), 'bad');
     return;
@@ -629,18 +727,13 @@ function ddSetStatus(text, kind) {
 }
 
 /** Which list belongs to which field. `kind` is a plain two-option select. */
-const DOC_FIELD_LISTS = {
-  storageCode: 'd_storageList', departmentCode: 'd_departmentList',
-  createuser: 'd_userList', accountCode: 'd_accountList',
-};
-
-/** Put the saved defaults into the document form, once its lists are loaded. */
+/** Put the saved defaults into the document form. */
 function applyDocDefaults() {
   for (const [key, id] of Object.entries(DOC_FORM_FIELDS)) {
     const value = docDefaults[key];
     if (value === undefined || value === '') continue;
     if (key === 'kind') { $(id).value = value; continue; }
-    setCodeValue(id, DOC_FIELD_LISTS[key], value);
+    combo(id).setCode(value);
   }
 }
 
@@ -653,8 +746,8 @@ async function loadDocDefaults(quiet) {
     for (const [key, id] of Object.entries(DOC_DEFAULT_FIELDS)) {
       const value = docDefaults[key] || '';
       if (key === 'kind') { $(id).value = value; continue; }
-      $(id).value = '';
-      setCodeValue(id, DOC_FIELD_LISTS[key], value);
+      combo(id).clear();
+      combo(id).setCode(value);
     }
     setPill($('ddState'), Object.keys(docDefaults).length ? `${Object.keys(docDefaults).length} مقدار` : 'خالی', 'ok');
     if (!quiet) ddSetStatus('پیش‌فرض‌ها از سرور خوانده شد.', 'ok');
@@ -666,8 +759,7 @@ async function loadDocDefaults(quiet) {
 async function saveDocDefaults() {
   const defaults = {};
   for (const [key, id] of Object.entries(DOC_DEFAULT_FIELDS)) {
-    const raw = $(id).value;
-    defaults[key] = key === 'kind' ? raw : codeFromLabel(raw);
+    defaults[key] = key === 'kind' ? $(id).value : combo(id).getCode();
   }
   ddSetStatus('در حال ذخیره…', 'busy');
   try {
@@ -690,15 +782,7 @@ async function loadDocDefaultLists() {
   if (!state.token) { alert('ابتدا وارد شوید.'); return; }
   ddSetStatus('در حال بارگذاری…', 'busy');
   try {
-    const [storages, departments, users] = await Promise.all([
-      listFor('storages'), listFor('departments'), listFor('users'),
-    ]);
-    fillCodeList('d_storageList', storages, 'storageCode', 'storageName');
-    fillCodeList('d_departmentList', departments, 'departmentCode', 'departmentName');
-    fillCodeList('d_userList', users, 'id', 'fullName');
-    if (!$('d_accountList').options.length) {
-      fillCodeList('d_accountList', await listFor('customers'), 'code', 'name');
-    }
+    await loadComboRows();
     await loadDocDefaults(true);
     ddSetStatus('فهرست‌ها بارگذاری شد؛ انتخاب کنید و «ذخیره» را بزنید.', 'ok');
   } catch (err) {
@@ -1280,11 +1364,15 @@ window.addEventListener('DOMContentLoaded', async () => {
   showLockedGoodFields();
   loadSettingsTable(true);
   loadPackingTable(true);
+  for (const f of Object.values(COMBO_FIELDS)) { combo(f.doc); combo(f.settings); }
   loadDocDefaults(true);
   $('ddLoad').addEventListener('click', loadDocDefaultLists);
   $('ddSave').addEventListener('click', saveDocDefaults);
   $('ddClear').addEventListener('click', () => {
-    for (const id of Object.values(DOC_DEFAULT_FIELDS)) $(id).value = '';
+    for (const [key, id] of Object.entries(DOC_DEFAULT_FIELDS)) {
+      if (key === 'kind') $(id).value = '';
+      else combo(id).clear();
+    }
     ddSetStatus('همه پاک شد — برای اعمال، «ذخیره» را بزنید.', '');
   });
   $('btnDocLoad').addEventListener('click', loadDocLookups);

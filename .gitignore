@@ -3,3 +3,7 @@ node_modules/
 *.log
 .env
 logs/
+
+# Panel settings written at runtime (sub-group table, packings, document
+# defaults). Machine state, not source — and a checkout must never overwrite it.
+data/
