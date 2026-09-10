@@ -350,9 +350,10 @@
     if (!data.serial) errs.push('سریال کالا خالی است');
     else if (!SERIAL_RE.test(String(data.serial))) errs.push('سریال باید عدد یا «عدد-حرف» باشد');
     if (data.unitIdRef === undefined) errs.push('کد واحد شمارش (unitIdRef) خالی است');
-    // Packing code is optional in CreateGood, and no valid one is known yet.
-    if (data.mainGroupCodeRef === undefined) errs.push('کد گروه اصلی خالی است');
-    // No second group check: it is derived from the goods code, not scanned.
+    // No group or packing checks. Registration sends only code, name, type and
+    // unitIdRef; the packing code belongs to the warehouse document, and the
+    // sub-group is derived from the goods code rather than scanned. Requiring
+    // them here marked every valid scan «ناقص» and kept it out of the document.
 
     // Cable length. Required on goods (type 1) — the unit of measure is متر, so
     // a good registered without one carries no quantity at all. Services
