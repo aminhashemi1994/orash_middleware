@@ -392,6 +392,7 @@ function refreshSubmitEnabled() {
   }
   const doc = $('btnDocSubmit');
   if (doc) { doc.disabled = blocked; doc.title = title; }
+  if (typeof showDocUser === 'function') showDocUser();
   // The scanner panel mirrors the same login/database gate (scan-ui.js).
   if (typeof onPanelStateChanged === 'function') onPanelStateChanged();
 }
@@ -565,7 +566,6 @@ function combo(inputId) {
 const COMBO_FIELDS = {
   storageCode: { doc: 'd_storage', settings: 'dd_storage', route: 'storages', codeKey: 'storageCode', nameKey: 'storageName' },
   departmentCode: { doc: 'd_department', settings: 'dd_department', route: 'departments', codeKey: 'departmentCode', nameKey: 'departmentName' },
-  createuser: { doc: 'd_user', settings: 'dd_user', route: 'users', codeKey: 'id', nameKey: 'fullName' },
   accountCode: { doc: 'd_account', settings: 'dd_account', route: 'customers', codeKey: 'code', nameKey: 'name' },
 };
 
@@ -586,6 +586,7 @@ async function loadDocLookups() {
     const rows = await loadComboRows();
     setPill($('docState'), `${rows.storageCode.length} انبار · ${rows.accountCode.length} تفصیلی`, 'ok');
     applyDocDefaults();
+    showDocUser();
     docSetStatus('', '');
   } catch (err) {
     setPill($('docState'), 'ناموفق', 'bad');
@@ -668,9 +669,10 @@ async function submitDoc() {
 
   const kind = $('d_kind').value;
   const missing = [];
+  const createuser = state.userId;
+  if (!createuser) missing.push('کاربر (دوباره وارد شوید)');
   const storageCode = combo('d_storage').getCode(); if (!storageCode) missing.push('انبار');
   const departmentCode = combo('d_department').getCode(); if (!departmentCode) missing.push('شعبه');
-  const createuser = combo('d_user').getCode(); if (!createuser) missing.push('کاربر ثبت‌کننده');
   const accountCode = combo('d_account').getCode(); if (!accountCode) missing.push('حساب تفصیلی');
   if (missing.length) {
     docSetStatus('این موارد انتخاب نشده‌اند: ' + missing.join('، '), 'bad');
@@ -707,14 +709,16 @@ async function submitDoc() {
 
 // ---------- settings: warehouse-document defaults ----------
 
+// `createuser` is deliberately absent: a document is filed by whoever is signed
+// in, so it is taken from the session and is neither chosen nor defaulted.
 const DOC_DEFAULT_FIELDS = {
   kind: 'dd_kind', storageCode: 'dd_storage', departmentCode: 'dd_department',
-  createuser: 'dd_user', accountCode: 'dd_account',
+  accountCode: 'dd_account',
 };
 /** Same values, in the document form itself. */
 const DOC_FORM_FIELDS = {
   kind: 'd_kind', storageCode: 'd_storage', departmentCode: 'd_department',
-  createuser: 'd_user', accountCode: 'd_account',
+  accountCode: 'd_account',
 };
 
 let docDefaults = {};
@@ -727,6 +731,16 @@ function ddSetStatus(text, kind) {
 }
 
 /** Which list belongs to which field. `kind` is a plain two-option select. */
+/** Who the document will be filed by — the signed-in user, always. */
+function showDocUser() {
+  const el = $('d_user');
+  if (!el) return;
+  const name = $('profileName') ? $('profileName').textContent : '';
+  el.textContent = state.userId
+    ? `${state.userId}${name && name !== 'وارد نشده' ? ' — ' + name : ''}`
+    : '— وارد نشده —';
+}
+
 /** Put the saved defaults into the document form. */
 function applyDocDefaults() {
   for (const [key, id] of Object.entries(DOC_FORM_FIELDS)) {
