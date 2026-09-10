@@ -45,10 +45,13 @@ const serialCheck = require('./lib/serial-check');
 const serialHost = require('./lib/serial-host');
 const labelQr = require('./lib/label-qr');
 const secondGroup = require('./public/second-group.js');
+const packing = require('./public/packing.js');
 const secondGroupStore = require('./lib/second-group-store');
 
 // Apply any saved sub-group table before the first label can be built.
 const secondGroupsAtBoot = secondGroupStore.read();
+const packingsAtBoot = secondGroupStore.readPackings();
+console.log(`[packings] ${packingsAtBoot.packings.length} rows (${packingsAtBoot.source === 'file' ? secondGroupStore.PACKING_FILE : 'جدول پیش‌فرض'})`);
 console.log(`[second-groups] ${secondGroupsAtBoot.groups.length} rows (${secondGroupsAtBoot.source === 'file' ? secondGroupStore.FILE : 'جدول پیش‌فرض'})`);
 
 const PORT = Number(process.env.PORT || 4173);
@@ -79,7 +82,7 @@ const ROUTES = {
   storages:       { method: 'POST', path: '/api/v3/Storage/GetStorages',    auth: true },
   stock:          { method: 'POST', path: '/api/v3/Storage/GetStockStorage', auth: true },
   tafsili:        { method: 'POST', path: '/api/v3/Tafsili/GetTafsili2',     auth: true },
-  customers:      { method: 'POST', path: '/api/v3/Customer/GetCustomer',    auth: true },
+  customers:      { method: 'POST', path: '/api/v3/Customer/GetCustomers',   auth: true },   // plural: the singular path is 404
   goods:          { method: 'POST', path: '/api/v3/Good/GetGoods',          auth: true },
   createGood:     { method: 'POST', path: '/api/v3/Good/CreateGood',        auth: true, write: true },
   createInvoice:  { method: 'POST', path: '/api/v3/Invoice/CreateInvoice',  auth: true, write: true },
@@ -414,7 +417,7 @@ async function handleRequest(req, res) {
       try {
         label = labelQr.buildLabel({
           code: q.get('code'), serial: q.get('serial'), name: q.get('name'),
-          lengthValue: q.get('lengthValue'),
+          lengthValue: q.get('lengthValue'), color: q.get('color'),
         });
       } catch (err) {
         // Plain text, not JSON: VBA reads the body straight into a MsgBox.
@@ -465,6 +468,40 @@ async function handleRequest(req, res) {
         } catch (err) {
           return sendJson(res, 400, { ok: false, error: String(err.message || err) });
         }
+      }
+      return sendJson(res, 405, { ok: false, error: 'GET or PUT' });
+    }
+
+    // The packing table, the same way the sub-group table is served.
+    if (url.pathname === '/settings/packings') {
+      if (req.method === 'GET') {
+        return sendJson(res, 200, { ok: true, ...secondGroupStore.readPackings() });
+      }
+      if (req.method === 'PUT') {
+        let body;
+        try { body = await readBody(req); }
+        catch { return sendJson(res, 400, { ok: false, error: 'بدنه‌ی درخواست JSON معتبر نیست' }); }
+        try {
+          const saved = secondGroupStore.writePackings(body.packings);
+          console.log(`[packings] saved ${saved.packings.length} rows`);
+          return sendJson(res, 200, { ok: true, ...saved });
+        } catch (err) {
+          return sendJson(res, 400, { ok: false, error: String(err.message || err) });
+        }
+      }
+      return sendJson(res, 405, { ok: false, error: 'GET or PUT' });
+    }
+
+    // Which warehouse/branch/user/account a document starts with.
+    if (url.pathname === '/settings/doc-defaults') {
+      if (req.method === 'GET') return sendJson(res, 200, { ok: true, ...secondGroupStore.readDocDefaults() });
+      if (req.method === 'PUT') {
+        let body;
+        try { body = await readBody(req); }
+        catch { return sendJson(res, 400, { ok: false, error: 'بدنه‌ی درخواست JSON معتبر نیست' }); }
+        const saved = secondGroupStore.writeDocDefaults(body.defaults || {});
+        console.log(`[doc-defaults] saved ${Object.keys(saved.defaults).length} values`);
+        return sendJson(res, 200, { ok: true, ...saved });
       }
       return sendJson(res, 405, { ok: false, error: 'GET or PUT' });
     }

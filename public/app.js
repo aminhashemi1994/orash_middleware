@@ -361,6 +361,24 @@ async function lookup(name, extraData = {}) {
   return callProxy(name, { method: 'POST', body });
 }
 
+/**
+ * The reference lists a warehouse document needs.
+ *
+ * `userId` sits beside `uniqueID`, not inside `data` — put it in `data` and
+ * every one of these answers «کد کاربر صحيح نيست» with an otherwise valid
+ * request. That is the whole reason these lookups looked broken for so long.
+ */
+async function listFor(name) {
+  const body = { baseUrl: baseUrl(), token: state.token,
+    body: { uniqueID: uniqueID(), userId: state.userId } };
+  const r = await callProxy(name, { method: 'POST', body });
+  if (!r.ok) throw new Error(r.error || 'خطای شبکه/پروکسی');
+  const rows = rowsFrom(r.data);
+  const bad = rows.length === 1 && JSON.stringify(rows[0]).includes('صحيح نيست');
+  if (bad) throw new Error(Object.values(rows[0]).find((v) => typeof v === 'string' && v.includes('نيست')));
+  return rows;
+}
+
 // ---------- submit + status ----------
 function refreshSubmitEnabled() {
   const noWrite = prodWriteBlocked();
@@ -368,10 +386,12 @@ function refreshSubmitEnabled() {
   const title = noWrite ? 'ثبت روی پایگاه تولید مسدود است' : (!state.token ? 'ابتدا وارد شوید' : '');
   const b = $('btnSubmitGood');
   if (b) { b.disabled = blocked; b.title = title; }
-  for (const id of ['btnLoadGoodsRef', 'btnLoadCodeRef']) {
+  for (const id of ['btnLoadGoodsRef', 'btnLoadCodeRef', 'btnDocLoad', 'ddLoad']) {
     const ref = $(id);
     if (ref) ref.disabled = !state.token;
   }
+  const doc = $('btnDocSubmit');
+  if (doc) { doc.disabled = blocked; doc.title = title; }
   // The scanner panel mirrors the same login/database gate (scan-ui.js).
   if (typeof onPanelStateChanged === 'function') onPanelStateChanged();
 }
@@ -412,65 +432,355 @@ const gNum = (id) => (gVal(id) === '' ? undefined : Number(gVal(id)));
  *
  * `secondGroupCodeRef` is deliberately not here: it is still chosen per good.
  */
-const LOCKED_GOOD_FIELDS = {
-  unitIdRef: { value: 5, label: 'متر' },
-  // 2, not 1: Orash rejected 1 outright («کد بسته بندي صحيح نيست»), and a sweep
-  // of the packing codes it does accept (2..37, minus 4) plus the number from
-  // accounting settled کلاف at 2.
-  unitPackingCodeRef: { value: 2, label: 'کلاف' },
-  mainGroupCodeRef: { value: 1, label: 'نوع محصول' },
+/**
+ * What each QR mode implies. `mode: "L"` — a label — means the good is measured
+ * in metres and packed in کلاف, so those codes are not carried in the QR and are
+ * not the operator's to change: they follow from the mode.
+ *
+ * Only `unitIdRef` reaches CreateGood. The packing code belongs to the step
+ * after registration, and is kept here so both read one definition.
+ */
+const MODE_DEFAULTS = {
+  L: {
+    unitIdRef: { value: 5, label: 'متر' },
+    unitPackingCodeRef: { value: 2, label: 'کلاف' },
+  },
 };
 
+/** The codes shown on the form, for the only mode the panel registers today. */
+const LOCKED_GOOD_FIELDS = MODE_DEFAULTS.L;
+
+
+// ---------- warehouse receipt / issue ----------
+
 /**
- * Re-derive the sub-group from whatever the code field holds now, and show it.
- *
- * When the goods code names exactly one family the field is read-only, like the
- * other reference codes. When its Excel code is shared by two families the
- * operator has to pick, so a select appears listing only those candidates.
+ * Both halves of every reference value are shown — «30 — انبار کالای ساخته شده»
+ * — because a warehouse picked by name alone is a warehouse picked wrongly when
+ * two of them read alike, and a code alone means nothing to the operator.
  */
-function refreshSecondGroup() {
-  const view = $('g_secondGroupCodeRef_view');
-  const pick = $('g_secondGroupCodeRef_pick');
-  const hidden = $('g_secondGroupCodeRef');
-  const code = gVal('g_code');
-  if (!code) {
-    pick.classList.add('hidden');
-    hidden.value = '';
-    view.textContent = '— کد کالا را وارد کنید —';
-    view.classList.remove('bad');
-    return;
+const withCode = (code, name) => `${code} — ${name}`;
+
+/**
+ * Fill one searchable box's list. A `<datalist>` rather than a `<select>`: with
+ * sixteen warehouses and two thousand accounts, the operator has to be able to
+ * type a fragment of either the code or the name and see it narrow.
+ */
+function fillCodeList(listId, rows, codeKey, nameKey) {
+  const list = $(listId);
+  if (!list) return;
+  list.innerHTML = '';
+  for (const row of rows) {
+    const o = document.createElement('option');
+    o.value = withCode(row[codeKey], row[nameKey]);
+    list.appendChild(o);
   }
-  const sub = SecondGroup.resolve(code);
-  if (sub.status === 'ambiguous') {
-    view.textContent = `کد اکسل «${sub.excel}» مشترک است — یکی را انتخاب کنید:`;
-    view.classList.remove('bad');
-    pick.classList.remove('hidden');
-    // Rebuild only when the candidates changed, so a choice survives retyping.
-    const want = sub.matches.map((m) => m.orash).join(',');
-    if (pick.dataset.candidates !== want) {
-      pick.dataset.candidates = want;
-      pick.innerHTML = '';
-      for (const m of sub.matches) {
-        const o = document.createElement('option');
-        o.value = String(m.orash);
-        o.textContent = `${m.name} — ${m.orash}`;
-        pick.appendChild(o);
-      }
-      pick.value = String(sub.matches[0].orash);   // never leave it unset
+}
+
+/** Point a searchable box at a code, showing its full «code — name» label. */
+function setCodeValue(inputId, listId, code) {
+  const el = $(inputId);
+  if (!el || code === undefined || code === null || code === '') return;
+  const hit = [...$(listId).options].find((o) => codeFromLabel(o.value) === String(code));
+  el.value = hit ? hit.value : String(code);
+}
+
+async function loadDocLookups() {
+  if (!state.token) { alert('ابتدا وارد شوید.'); return; }
+  setPill($('docState'), 'در حال بارگذاری…', 'busy');
+  try {
+    const [storages, departments, users, accounts] = await Promise.all([
+      listFor('storages'), listFor('departments'), listFor('users'), listFor('customers'),
+    ]);
+    fillCodeList('d_storageList', storages, 'storageCode', 'storageName');
+    fillCodeList('d_departmentList', departments, 'departmentCode', 'departmentName');
+    fillCodeList('d_userList', users, 'id', 'fullName');
+    fillCodeList('d_accountList', accounts, 'code', 'name');
+    setPill($('docState'), `${storages.length} انبار · ${accounts.length} تفصیلی`, 'ok');
+    applyDocDefaults();
+    docSetStatus('', '');
+  } catch (err) {
+    setPill($('docState'), 'ناموفق', 'bad');
+    docSetStatus('بارگذاری فهرست‌ها ناموفق بود: ' + (err.message || err), 'bad');
+  }
+}
+
+function docSetStatus(text, kind, html) {
+  const box = $('docStatus');
+  box.className = 'status' + (kind ? ' ' + kind : '');
+  box.innerHTML = html || escHtml(text);
+  box.classList.toggle('hidden', !text && !html);
+}
+
+/** The leading number of «120001 — رفاه ناظران». */
+const codeFromLabel = (v) => String(v || '').trim().split('—')[0].trim();
+
+/**
+ * Today, as Orash writes dates: `1405/06/19`.
+ *
+ * Built from parts rather than a formatted string — the formatted one is
+ * `06/19/1405 AP`, in the wrong order and with an era suffix.
+ */
+function jalaliNow() {
+  const d = new Date();
+  const parts = new Intl.DateTimeFormat('en-u-ca-persian-nu-latn', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(d).reduce((acc, p) => (acc[p.type] = p.value, acc), {});
+  const pad = (n) => String(n).padStart(2, '0');
+  return {
+    date: `${parts.year}/${pad(parts.month)}/${pad(parts.day)}`,
+    time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+  };
+}
+
+/** Scans worth putting on a document: everything that parsed cleanly. */
+function docSourceRows() {
+  const queue = (window.ScanPanel && window.ScanPanel.scan && window.ScanPanel.scan.queue) || [];
+  return queue.filter((i) => i.status !== 'invalid').map((i) => i.data);
+}
+
+function renderDocLines() {
+  const { lines, errors } = WarehouseDoc.aggregate(docSourceRows());
+  const body = document.querySelector('#docTable tbody');
+  body.innerHTML = '';
+  for (const l of lines) {
+    const tr = document.createElement('tr');
+    for (const cell of [l.code, l.name, withCode(l.packingId, l.packingTitle),
+                        l.lengthValue, l.count, l.quantity]) {
+      const td = document.createElement('td');
+      td.textContent = String(cell);
+      tr.appendChild(td);
     }
-    hidden.value = pick.value;
+    body.appendChild(tr);
+  }
+  $('btnDocSubmit').disabled = !lines.length || !state.token || prodWriteBlocked();
+  if (errors.length) {
+    docSetStatus(' ', 'bad', `<strong>${errors.length} ردیف کنار گذاشته شد</strong><ul><li>`
+      + errors.map(escHtml).join('</li><li>') + '</li></ul>');
+  } else if (!lines.length) {
+    docSetStatus('صف اسکن خالی است — چیزی برای ثبت نیست.', '');
+  } else {
+    docSetStatus(`${lines.length} سطر آماده‌ی ثبت است.`, 'ok');
+  }
+  return lines;
+}
+
+async function submitDoc() {
+  const lines = renderDocLines();
+  if (!lines.length) return;
+
+  const kind = $('d_kind').value;
+  const missing = [];
+  const storageCode = codeFromLabel($('d_storage').value); if (!storageCode) missing.push('انبار');
+  const departmentCode = codeFromLabel($('d_department').value); if (!departmentCode) missing.push('شعبه');
+  const createuser = codeFromLabel($('d_user').value); if (!createuser) missing.push('کاربر ثبت‌کننده');
+  const accountCode = codeFromLabel($('d_account').value); if (!accountCode) missing.push('حساب تفصیلی');
+  if (missing.length) {
+    docSetStatus('این موارد انتخاب نشده‌اند: ' + missing.join('، '), 'bad');
     return;
   }
-  pick.classList.add('hidden');
-  pick.dataset.candidates = '';
-  if (sub.status === 'ok') {
-    hidden.value = String(sub.code);
-    view.textContent = `${sub.code} — ${sub.matches[0].name}`;
-    view.classList.remove('bad');
+
+  const { date, time } = jalaliNow();
+  const doc = WarehouseDoc.build({
+    kind, lines, createuser, departmentCode, storageCode, accountCode,
+    createdate: date, createtime: time, description: gVal('d_description'),
+  });
+  const title = WarehouseDoc.DOC_TYPES[kind].title;
+
+  docSetStatus(`در حال ثبت ${title}…`, 'busy');
+  const r = await withSpinner('btnDocSubmit', 'در حال ثبت…', () => callProxy('createInvoice', {
+    method: 'POST',
+    body: { baseUrl: baseUrl(), token: state.token, uniqueID: uniqueID(),
+            body: { uniqueID: uniqueID(), ...doc } },
+  }));
+  showRaw(r);
+  if (r.httpStatus === 403) { docSetStatus(r.error, 'bad'); return; }
+  if (!r.ok) { docSetStatus('ناموفق: ' + (r.error || 'خطای شبکه/پروکسی'), 'bad'); return; }
+
+  const res = interpret(r);
+  const message = res.items.map((it) => it.errorMessage).filter(Boolean).join(' / ') || res.data.message || '';
+  if (res.ok) {
+    docSetStatus(' ', 'good', `<strong>${escHtml(title)} ثبت شد ✓</strong><p>${escHtml(message)}</p>`
+      + `<p class="mono">${escHtml(res.httpLine)}</p>`);
   } else {
-    hidden.value = '';
-    view.textContent = sub.message;
-    view.classList.add('bad');
+    docSetStatus(' ', 'bad', `<strong>ثبت ${escHtml(title)} ناموفق بود</strong><p>${escHtml(message)}</p>`
+      + `<p class="mono">${escHtml(res.httpLine)}</p>`);
+  }
+}
+
+// ---------- settings: warehouse-document defaults ----------
+
+const DOC_DEFAULT_FIELDS = {
+  kind: 'dd_kind', storageCode: 'dd_storage', departmentCode: 'dd_department',
+  createuser: 'dd_user', accountCode: 'dd_account',
+};
+/** Same values, in the document form itself. */
+const DOC_FORM_FIELDS = {
+  kind: 'd_kind', storageCode: 'd_storage', departmentCode: 'd_department',
+  createuser: 'd_user', accountCode: 'd_account',
+};
+
+let docDefaults = {};
+
+function ddSetStatus(text, kind) {
+  const box = $('ddStatus');
+  box.className = 'status' + (kind ? ' ' + kind : '');
+  box.textContent = text;
+  box.classList.toggle('hidden', !text);
+}
+
+/** Which list belongs to which field. `kind` is a plain two-option select. */
+const DOC_FIELD_LISTS = {
+  storageCode: 'd_storageList', departmentCode: 'd_departmentList',
+  createuser: 'd_userList', accountCode: 'd_accountList',
+};
+
+/** Put the saved defaults into the document form, once its lists are loaded. */
+function applyDocDefaults() {
+  for (const [key, id] of Object.entries(DOC_FORM_FIELDS)) {
+    const value = docDefaults[key];
+    if (value === undefined || value === '') continue;
+    if (key === 'kind') { $(id).value = value; continue; }
+    setCodeValue(id, DOC_FIELD_LISTS[key], value);
+  }
+}
+
+async function loadDocDefaults(quiet) {
+  try {
+    const res = await fetch('/settings/doc-defaults');
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'خطای نامشخص');
+    docDefaults = json.defaults || {};
+    for (const [key, id] of Object.entries(DOC_DEFAULT_FIELDS)) {
+      const value = docDefaults[key] || '';
+      if (key === 'kind') { $(id).value = value; continue; }
+      $(id).value = '';
+      setCodeValue(id, DOC_FIELD_LISTS[key], value);
+    }
+    setPill($('ddState'), Object.keys(docDefaults).length ? `${Object.keys(docDefaults).length} مقدار` : 'خالی', 'ok');
+    if (!quiet) ddSetStatus('پیش‌فرض‌ها از سرور خوانده شد.', 'ok');
+  } catch (err) {
+    ddSetStatus('خواندن پیش‌فرض‌ها ناموفق بود: ' + (err.message || err), 'bad');
+  }
+}
+
+async function saveDocDefaults() {
+  const defaults = {};
+  for (const [key, id] of Object.entries(DOC_DEFAULT_FIELDS)) {
+    const raw = $(id).value;
+    defaults[key] = key === 'kind' ? raw : codeFromLabel(raw);
+  }
+  ddSetStatus('در حال ذخیره…', 'busy');
+  try {
+    const res = await fetch('/settings/doc-defaults', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ defaults }),
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'خطای نامشخص');
+    docDefaults = json.defaults || {};
+    setPill($('ddState'), `${Object.keys(docDefaults).length} مقدار`, 'ok');
+    ddSetStatus('ذخیره شد. در فرم رسید و حواله از پیش پر می‌شود.', 'ok');
+  } catch (err) {
+    ddSetStatus('ذخیره ناموفق بود: ' + (err.message || err), 'bad');
+  }
+}
+
+/** The settings page needs the same lists the document form fills. */
+async function loadDocDefaultLists() {
+  if (!state.token) { alert('ابتدا وارد شوید.'); return; }
+  ddSetStatus('در حال بارگذاری…', 'busy');
+  try {
+    const [storages, departments, users] = await Promise.all([
+      listFor('storages'), listFor('departments'), listFor('users'),
+    ]);
+    fillCodeList('d_storageList', storages, 'storageCode', 'storageName');
+    fillCodeList('d_departmentList', departments, 'departmentCode', 'departmentName');
+    fillCodeList('d_userList', users, 'id', 'fullName');
+    if (!$('d_accountList').options.length) {
+      fillCodeList('d_accountList', await listFor('customers'), 'code', 'name');
+    }
+    await loadDocDefaults(true);
+    ddSetStatus('فهرست‌ها بارگذاری شد؛ انتخاب کنید و «ذخیره» را بزنید.', 'ok');
+  } catch (err) {
+    ddSetStatus('بارگذاری ناموفق بود: ' + (err.message || err), 'bad');
+  }
+}
+
+// ---------- settings: the packing table ----------
+
+const pkEdit = { rows: [], savedAt: null, source: 'default' };
+
+function pkSetStatus(text, kind) {
+  const box = $('pkStatus');
+  box.className = 'status' + (kind ? ' ' + kind : '');
+  box.textContent = text;
+  box.classList.toggle('hidden', !text);
+}
+
+function renderPackingTable() {
+  const body = document.querySelector('#pkTable tbody');
+  if (!body) return;
+  body.innerHTML = '';
+  pkEdit.rows.forEach((row, i) => {
+    const tr = document.createElement('tr');
+    const cell = (child) => { const td = document.createElement('td'); td.appendChild(child); tr.appendChild(td); return td; };
+
+    const title = document.createElement('input');
+    title.type = 'text'; title.value = row.title || ''; title.placeholder = 'مثلاً: کلاف-زرد';
+    title.addEventListener('input', () => { pkEdit.rows[i].title = title.value; });
+    cell(title);
+
+    const id = document.createElement('input');
+    id.type = 'number'; id.min = '1'; id.value = row.id == null ? '' : row.id;
+    id.addEventListener('input', () => { pkEdit.rows[i].id = id.value; });
+    cell(id).className = 'narrow';
+
+    const del = document.createElement('button');
+    del.type = 'button'; del.className = 'ghost danger'; del.textContent = 'حذف';
+    del.addEventListener('click', () => { pkEdit.rows.splice(i, 1); renderPackingTable(); });
+    cell(del).className = 'narrow';
+
+    body.appendChild(tr);
+  });
+  setPill($('pkState'), `${pkEdit.rows.length} ردیف` + (pkEdit.source === 'file' ? ' — ذخیره‌شده' : ' — جدول اولیه'), 'ok');
+}
+
+function pkAdopt(payload) {
+  pkEdit.rows = payload.packings.map((p) => ({ ...p }));
+  pkEdit.savedAt = payload.savedAt || null;
+  pkEdit.source = payload.source || 'default';
+  Packing.setPackings(payload.packings);
+  renderPackingTable();
+}
+
+async function loadPackingTable(quiet) {
+  try {
+    const res = await fetch('/settings/packings');
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'خطای نامشخص');
+    pkAdopt(json);
+    if (!quiet) pkSetStatus('جدول از سرور خوانده شد.', 'ok');
+  } catch (err) {
+    pkSetStatus('خواندن جدول بسته‌بندی ناموفق بود: ' + (err.message || err), 'bad');
+  }
+}
+
+async function savePackingTable() {
+  const { errors } = Packing.validate(pkEdit.rows);
+  if (errors.length) { pkSetStatus(errors.join('\n'), 'bad'); return; }
+  pkSetStatus('در حال ذخیره…', 'busy');
+  try {
+    const res = await fetch('/settings/packings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ packings: pkEdit.rows }),
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'خطای نامشخص');
+    pkAdopt(json);
+    pkSetStatus(`ذخیره شد — ${json.packings.length} ردیف.`, 'ok');
+  } catch (err) {
+    pkSetStatus('ذخیره ناموفق بود: ' + (err.message || err), 'bad');
   }
 }
 
@@ -535,7 +845,6 @@ function sgAdopt(payload) {
   sgEdit.source = payload.source || 'default';
   SecondGroup.setGroups(payload.groups);
   renderSettingsTable();
-  refreshSecondGroup();
 }
 
 async function loadSettingsTable(quiet) {
@@ -595,22 +904,24 @@ function showLockedGoodFields() {
 }
 
 // Only the required fields for CreateGood on this deployment.
+/**
+ * The body CreateGood needs, and nothing else.
+ *
+ * Measured against the live service on 2026-08-27: only `code`, `name`, `type`
+ * and `unitIdRef` are required — main group, sub-group and packing are checked
+ * only when present, so omitting them is accepted. Everything else about the
+ * cable (متراژ, رنگ, گروه) belongs to the step that follows registration.
+ */
 function buildGoodPayload() {
   const data = {
-    mode: ScanCore.MODES.LABEL,
     code: gVal('g_code'),
     name: gVal('g_name'),
-    type: Number($('g_type').value),
-    serial: gVal('g_serial'),
-    lengthValue: gNum('g_lengthValue'),   // متراژ کابل؛ اختیاری
-    unitIdRef: LOCKED_GOOD_FIELDS.unitIdRef.value,
-    unitPackingCodeRef: LOCKED_GOOD_FIELDS.unitPackingCodeRef.value ?? undefined,
-    mainGroupCodeRef: LOCKED_GOOD_FIELDS.mainGroupCodeRef.value,
-    secondGroupCodeRef: gNum('g_secondGroupCodeRef'),   // set by refreshSecondGroup()
-    isActive: true,
+    type: 1,                                        // کالا
+    unitIdRef: LOCKED_GOOD_FIELDS.unitIdRef.value,  // متر, from mode L
   };
   return { uniqueID: uniqueID(), data };
 }
+
 
 const SERIAL_RE = /^\d+(-[A-Za-z]+)?$/; // "123" or "123-a"
 
@@ -622,17 +933,10 @@ function validateGood(payload) {
   if (!d.code) errs.push('کد کالا الزامی است');
   else if (!/^\d+$/.test(d.code)) errs.push('کد کالا باید فقط عدد باشد');
   if (!d.name) errs.push('عنوان کالا الزامی است');
-  if (!d.type) errs.push('نوع مشخص نیست');
-  if (!d.serial) errs.push('سریال کالا الزامی است');
-  else if (!SERIAL_RE.test(d.serial)) errs.push('سریال باید عدد یا به شکل «عدد-حرف» باشد (مثل 123-a)');
-  if (!(Number(d.lengthValue) > 0)) errs.push('متراژ الزامی است (واحد شمارش متر است)');
   if (d.unitIdRef === undefined) errs.push('کد واحد شمارش (unitIdRef) الزامی است');
-  if (d.mainGroupCodeRef === undefined) errs.push('کد گروه اصلی الزامی است');
-  if (d.secondGroupCodeRef === undefined) {
-    errs.push('گروه فرعی از کد کالا به دست نیامد: ' + SecondGroup.resolve(d.code || '').message);
-  }
   return errs;
 }
+
 
 /**
  * Send one CreateGood request and normalize the outcome.
@@ -641,6 +945,78 @@ function validateGood(payload) {
  * @param {object} data  the CreateGood `data` object
  * @returns {Promise<{ok:boolean, code:?string, message:string, httpLine:string, blocked?:boolean}>}
  */
+/**
+ * Ask before registering. Resolves true when the operator chose to register.
+ *
+ * A promise rather than `confirm()`: the panel has to show what it is about to
+ * write, and the two answers are not "ok/cancel" but two different decisions —
+ * register it here, or leave it to accounting.
+ */
+function askToRegister(data) {
+  const wrap = $('askWrap');
+  $('askFacts').innerHTML = [
+    ['کد کالا', data.code],
+    ['عنوان', data.name],
+    ['واحد شمارش', `${LOCKED_GOOD_FIELDS.unitIdRef.value} — ${LOCKED_GOOD_FIELDS.unitIdRef.label}`],
+  ].map(([k, v]) => `<div class="chip"><dt>${escHtml(k)}</dt><dd>${escHtml(v)}</dd></div>`).join('');
+  wrap.classList.remove('hidden');
+
+  return new Promise((resolve) => {
+    const done = (answer) => {
+      wrap.classList.add('hidden');
+      $('askConfirm').removeEventListener('click', yes);
+      $('askCancel').removeEventListener('click', no);
+      document.removeEventListener('keydown', onKey);
+      resolve(answer);
+    };
+    const yes = () => done(true);
+    const no = () => done(false);
+    const onKey = (e) => { if (e.key === 'Escape') no(); };
+    $('askConfirm').addEventListener('click', yes);
+    $('askCancel').addEventListener('click', no);
+    document.addEventListener('keydown', onKey);
+    $('askConfirm').focus();
+  });
+}
+
+/**
+ * Is this goods code already registered in Orash?
+ *
+ * `GetGoods` would be the obvious way to ask, but it is broken on this server
+ * («Procedure or function SearchGoods has too many arguments specified»), so the
+ * question is put to CreateGood itself. CreateGood checks for a duplicate code
+ * *before* it checks `goodCategoryIdRef`, so a request carrying a category that
+ * cannot exist is always rejected — and which rejection comes back is the
+ * answer:
+ *
+ *   «مقدار فيلد کد کالا و خدمات تکراري است»  → the code is already registered
+ *   «کد طبقه بندي صحيح نيست»                 → it is not, and nothing was created
+ *
+ * Nothing is ever written: the guard stops the request one step before creation.
+ */
+const CATEGORY_GUARD = 8123;   // a goodCategoryIdRef that does not exist
+
+async function goodExists(data) {
+  const probe = { ...ScanCore.forService(data), goodCategoryIdRef: CATEGORY_GUARD };
+  const r = await callProxy('createGood', {
+    method: 'POST',
+    body: { baseUrl: baseUrl(), token: state.token, uniqueID: uniqueID(),
+            body: { uniqueID: uniqueID(), data: probe } },
+  });
+  if (r.httpStatus === 403) return { ok: false, blocked: true, message: r.error };
+  if (!r.ok) return { ok: false, message: r.error || 'خطای شبکه/پروکسی' };
+
+  const res = interpret(r);
+  const text = (res.item.errorMessage || res.data.message || '').trim();
+  if (text.includes('تکراري است') && text.includes('کد کالا')) {
+    return { ok: true, exists: true, message: text };
+  }
+  if (text.includes('طبقه بندي')) return { ok: true, exists: false, message: text };
+  // Anything else means the question was not answered — a duplicate *name*, a
+  // rejected code, a service fault. Report it rather than guess.
+  return { ok: false, message: text || 'پاسخ سرویس شناخته نشد', httpLine: res.httpLine };
+}
+
 async function postGood(data) {
   // `mode` and anything else local to this system never leaves it.
   const body = ScanCore.forService(data);
@@ -674,6 +1050,28 @@ async function submitGood() {
     showStatus('goodStatus', 'bad', 'اعتبارسنجی ناموفق', '<ul><li>' + errs.join('</li><li>') + '</li></ul>');
     return;
   }
+
+  // Look before writing: a good that is already registered needs nothing done,
+  // and one that is not is the operator's decision, not ours.
+  showStatus('goodStatus', 'busy', 'در حال بررسی وجود کالا…', '');
+  const found = await withSpinner('btnSubmitGood', 'در حال بررسی…', () => goodExists(payload.data));
+  if (!found.ok) {
+    showStatus('goodStatus', 'bad', found.blocked ? 'مسدود شد' : 'بررسی وجود کالا ناموفق بود',
+      `<p>${escHtml(found.message)}</p>`);
+    return;
+  }
+  if (found.exists) {
+    showStatus('goodStatus', 'good', 'کالا از قبل در اوراش ثبت است',
+      `<p>کد <b>${escHtml(payload.data.code)}</b> قبلاً ثبت شده؛ کاری لازم نیست.</p>`);
+    return;
+  }
+
+  if (!await askToRegister(payload.data)) {
+    showStatus('goodStatus', 'busy', 'ثبت نشد',
+      `<p>کد <b>${escHtml(payload.data.code)}</b> در اوراش نیست. برای ثبت به تیم حسابداری اطلاع دهید.</p>`);
+    return;
+  }
+
   showStatus('goodStatus', 'busy', 'در حال ارسال…', '');
   const res = await withSpinner('btnSubmitGood', 'در حال ارسال…', () => postGood(payload.data));
 
@@ -687,14 +1085,12 @@ async function submitGood() {
   }
 }
 
+
 // Form <-> plain data object, so a scan can prefill the form and the form can
 // supply defaults for fields a QR code omits.
 // The locked codes are absent on purpose: a scanned QR must not be able to
 // change them either, so nothing ever writes them back into the form.
-const GOOD_FIELD_INPUTS = {
-  code: 'g_code', name: 'g_name', serial: 'g_serial', lengthValue: 'g_lengthValue',
-  secondGroupCodeRef: 'g_secondGroupCodeRef',
-};
+const GOOD_FIELD_INPUTS = { code: 'g_code', name: 'g_name' };
 
 /** Everything the form currently holds, used as defaults under a scan. */
 function goodFormDefaults() {
@@ -708,8 +1104,6 @@ function applyGoodToForm(data) {
   for (const [field, id] of Object.entries(GOOD_FIELD_INPUTS)) {
     if (data[field] !== undefined && data[field] !== '') $(id).value = data[field];
   }
-  if (data.type === 1 || data.type === 2) $('g_type').value = String(data.type);
-  refreshSecondGroup();
 }
 
 async function loadGoodsReference() {
@@ -884,8 +1278,31 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   // CreateGood handlers
   showLockedGoodFields();
-  refreshSecondGroup();
   loadSettingsTable(true);
+  loadPackingTable(true);
+  loadDocDefaults(true);
+  $('ddLoad').addEventListener('click', loadDocDefaultLists);
+  $('ddSave').addEventListener('click', saveDocDefaults);
+  $('ddClear').addEventListener('click', () => {
+    for (const id of Object.values(DOC_DEFAULT_FIELDS)) $(id).value = '';
+    ddSetStatus('همه پاک شد — برای اعمال، «ذخیره» را بزنید.', '');
+  });
+  $('btnDocLoad').addEventListener('click', loadDocLookups);
+  $('btnDocPreview').addEventListener('click', renderDocLines);
+  $('btnDocSubmit').addEventListener('click', submitDoc);
+  $('pkAdd').addEventListener('click', () => {
+    pkEdit.rows.push({ title: '', id: '' });
+    renderPackingTable();
+    pkSetStatus('ردیف تازه اضافه شد؛ برای اعمال، «ذخیره» را بزنید.', '');
+  });
+  $('pkSave').addEventListener('click', savePackingTable);
+  $('pkReload').addEventListener('click', () => loadPackingTable(false));
+  $('pkReset').addEventListener('click', () => {
+    if (!confirm('جدول بسته‌بندی به حالت اولیه برمی‌گردد. ادامه می‌دهید؟')) return;
+    pkEdit.rows = Packing.PACKINGS.map((p) => ({ ...p }));
+    renderPackingTable();
+    pkSetStatus('جدول اولیه بازگردانده شد — هنوز ذخیره نشده.', '');
+  });
   $('sgAdd').addEventListener('click', () => {
     sgEdit.rows.push({ name: '', excel: '', orash: '' });
     renderSettingsTable();
@@ -900,10 +1317,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     sgSetStatus('جدول اولیه بازگردانده شد — هنوز ذخیره نشده.', '');
   });
 
-  $('g_code').addEventListener('input', refreshSecondGroup);
-  $('g_secondGroupCodeRef_pick').addEventListener('change', () => {
-    $('g_secondGroupCodeRef').value = $('g_secondGroupCodeRef_pick').value;
-  });
   $('btnSubmitGood').addEventListener('click', submitGood);
   $('btnLoadGoodsRef').addEventListener('click', loadGoodsReference);
   $('btnLoadCodeRef').addEventListener('click', loadCodeReference);

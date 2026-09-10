@@ -1106,3 +1106,24 @@ body.mobile .camera-wrap video { max-height: none; }
 .diag > summary { color: var(--muted); }
 .diag .row { margin-top: .6rem; }
 
+
+/* ---- the one question this panel asks before it writes ------------------ */
+.modal-wrap {
+  position: fixed; inset: 0; z-index: 60;
+  display: grid; place-items: center;
+  padding: 20px;
+  background: rgba(2,4,12,.72);
+  backdrop-filter: blur(6px);
+}
+.modal {
+  width: min(30rem, 100%);
+  padding: 22px;
+  border: 1px solid var(--edge);
+  border-radius: var(--r-m);
+  background: var(--bg-soft);
+  box-shadow: var(--sh-3);
+}
+.modal h2 { margin: 0 0 14px; font-size: 17px; }
+.modal .chips { margin-bottom: 14px; }
+.modal .hint { margin: 0 0 16px; }
+.modal-actions { justify-content: flex-start; flex-wrap: wrap; }

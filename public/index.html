@@ -195,11 +195,62 @@
         </div>
       </section>
 
+      <!-- ============ warehouse receipt / issue ============ -->
+      <section class="panel">
+        <div class="section-head">
+          <h2>رسید و حواله انبار</h2>
+          <span id="docState" class="pill">—</span>
+        </div>
+        <p class="hint">سطرها از صف اسکن ساخته می‌شوند: هر اسکن یک کلاف است، و کلاف‌های هم‌کد با متراژ یکسان در یک سطر جمع می‌شوند.</p>
+
+        <div class="grid">
+          <label><span class="lbl-row">نوع سند</span>
+            <select id="d_kind">
+              <option value="receipt">رسید انبار</option>
+              <option value="issue">حواله انبار</option>
+            </select>
+          </label>
+          <label><span class="lbl-row">انبار <em>hsc</em></span>
+            <input id="d_storage" list="d_storageList" placeholder="جست‌وجو: کد یا نام انبار" />
+            <datalist id="d_storageList"></datalist>
+          </label>
+          <label><span class="lbl-row">شعبه <em>departmentCode</em></span>
+            <input id="d_department" list="d_departmentList" placeholder="جست‌وجو: کد یا نام شعبه" />
+            <datalist id="d_departmentList"></datalist>
+          </label>
+          <label><span class="lbl-row">کاربر ثبت‌کننده <em>createuser</em></span>
+            <input id="d_user" list="d_userList" placeholder="جست‌وجو: کد یا نام کاربر" />
+            <datalist id="d_userList"></datalist>
+          </label>
+          <label class="span-all"><span class="lbl-row">حساب تفصیلی <em>pc</em></span>
+            <input id="d_account" list="d_accountList" placeholder="جست‌وجو: کد یا نام حساب — مثلاً: 120001 — رفاه ناظران" />
+            <datalist id="d_accountList"></datalist>
+          </label>
+          <label class="span-all"><span class="lbl-row">شرح سند <em>اختیاری</em></span>
+            <input id="d_description" type="text" placeholder="مثلاً: رسید تولید شیفت صبح" />
+          </label>
+        </div>
+
+        <div class="row">
+          <button id="btnDocLoad" class="ghost" disabled>بارگذاری فهرست‌ها</button>
+          <button id="btnDocPreview" class="ghost">به‌روزرسانی سطرها</button>
+          <button id="btnDocSubmit" class="primary" disabled>ثبت سند</button>
+        </div>
+
+        <div class="table-scroll">
+          <table id="docTable" class="ref-table">
+            <thead><tr><th>کد کالا</th><th>عنوان</th><th>بسته‌بندی</th><th>متراژ هر بسته</th><th>تعداد بسته</th><th>مجموع متراژ</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div id="docStatus" class="status hidden"></div>
+      </section>
+
       <!-- ============ register a good ============ -->
       <section class="panel">
         <div class="section-head">
           <h2>ثبت کالا</h2>
-          <span class="hint">آنچه در QR نباشد از همین‌جا برداشته می‌شود.</span>
+          <span class="hint">فقط کد، عنوان و واحد شمارش ثبت می‌شود.</span>
         </div>
 
         <div class="grid">
@@ -207,36 +258,17 @@
             <input id="g_code" type="text" inputmode="numeric" placeholder="۱۰۲۰۰۰۰۰۰۰۲۰۰۰۶۴۰۴۰۷۰" />
           </label>
           <label><span class="lbl-row">عنوان کالا</span>
-            <input id="g_name" type="text" placeholder="مثلاً: کابل ۲.۵" />
-          </label>
-          <label><span class="lbl-row">سریال</span>
-            <input id="g_serial" type="text" placeholder="مثلاً: 123 یا 123-a" />
-          </label>
-          <label><span class="lbl-row">متراژ <em>متر</em></span>
-            <input id="g_lengthValue" type="number" min="0" step="0.01" placeholder="مثلاً: 250" />
-          </label>
-          <label><span class="lbl-row">نوع</span>
-            <select id="g_type">
-              <option value="1">۱ - کالا</option>
-              <option value="2">۲ - خدمات</option>
-            </select>
+            <input id="g_name" type="text" placeholder="مثلاً: کابل تخت آمیزه لاستیک 3x16" />
           </label>
         </div>
 
         <div class="fixed-codes">
           <div class="fixed-codes-head">
-            <span>کدهای ثابت</span>
-            <span class="hint">تغییرشان از بخش تنظیمات در تب پروفایل</span>
+            <span>واحد شمارش</span>
+            <span class="hint">از حالت QR (‏L) — تغییرش از تب تنظیمات</span>
           </div>
           <dl class="chips">
             <div class="chip"><dt>واحد شمارش</dt><dd id="g_unitIdRef">—</dd></div>
-            <div class="chip"><dt>نوع بسته‌بندی</dt><dd id="g_unitPackingCodeRef">—</dd></div>
-            <div class="chip"><dt>گروه اصلی</dt><dd id="g_mainGroupCodeRef">—</dd></div>
-            <div class="chip chip-wide"><dt>گروه فرعی <span class="hint">از رقم دوم و سوم کد</span></dt>
-              <dd id="g_secondGroupCodeRef_view">— کد کالا را وارد کنید —</dd>
-              <select id="g_secondGroupCodeRef_pick" class="ref-select hidden"></select>
-              <input id="g_secondGroupCodeRef" type="hidden" />
-            </div>
           </dl>
         </div>
 
@@ -376,6 +408,62 @@
           <span class="hint">با خروج، توکن پاک می‌شود و تا ورود بعدی هیچ اسکنی ثبت نمی‌شود.</span>
         </div>
       </section>
+      <section class="panel">
+        <div class="section-head">
+          <h2>پیش‌فرض‌های سند انبار</h2>
+          <span id="ddState" class="pill">—</span>
+        </div>
+        <p class="hint">هر چه اینجا انتخاب کنید، در فرم رسید و حواله از پیش پر می‌شود. هیچ‌چیز خودکار انتخاب نمی‌شود؛ هر کدام را خالی بگذارید، همان‌جا خالی می‌ماند.</p>
+        <div class="grid">
+          <label><span class="lbl-row">نوع سند</span>
+            <select id="dd_kind">
+              <option value="">— بدون پیش‌فرض —</option>
+              <option value="receipt">رسید انبار</option>
+              <option value="issue">حواله انبار</option>
+            </select>
+          </label>
+          <label><span class="lbl-row">انبار <em>hsc</em></span>
+            <input id="dd_storage" list="d_storageList" placeholder="جست‌وجو: کد یا نام انبار" />
+          </label>
+          <label><span class="lbl-row">شعبه <em>departmentCode</em></span>
+            <input id="dd_department" list="d_departmentList" placeholder="جست‌وجو: کد یا نام شعبه" />
+          </label>
+          <label><span class="lbl-row">کاربر ثبت‌کننده <em>createuser</em></span>
+            <input id="dd_user" list="d_userList" placeholder="جست‌وجو: کد یا نام کاربر" />
+          </label>
+          <label class="span-all"><span class="lbl-row">حساب تفصیلی <em>pc</em></span>
+            <input id="dd_account" list="d_accountList" placeholder="جست‌وجو: کد یا نام حساب" />
+          </label>
+        </div>
+        <div class="row">
+          <button id="ddLoad" class="ghost" disabled>بارگذاری فهرست‌ها</button>
+          <button id="ddSave" class="primary">ذخیره</button>
+          <button id="ddClear" class="ghost">پاک کردن همه</button>
+        </div>
+        <div id="ddStatus" class="status hidden"></div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>تنظیمات بسته‌بندی</h2>
+          <span id="pkState" class="pill">—</span>
+        </div>
+        <p class="hint">عنوان بسته‌بندی از حالت QR و رنگ ساخته می‌شود — حالت <code>L</code> یعنی «کلاف»، و رنگ با خط تیره به آن می‌چسبد (مثلاً «کلاف-زرد»). بدون رنگ، «کلاف» خالی در نظر گرفته می‌شود. عنوانی که در این جدول نباشد، خطا می‌دهد.</p>
+        <div class="table-scroll">
+          <table id="pkTable" class="ref-table edit-table">
+            <thead><tr><th>عنوان بسته‌بندی</th><th>کد اوراش</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="row">
+          <button id="pkAdd" class="ghost">افزودن ردیف</button>
+          <button id="pkSave" class="primary">ذخیره</button>
+          <button id="pkReload" class="ghost">بازگردانی از سرور</button>
+          <button id="pkReset" class="ghost">بازگشت به جدول اولیه</button>
+        </div>
+        <div id="pkStatus" class="status hidden"></div>
+      </section>
+
       <details class="panel diag">
         <summary>عیب‌یابی</summary>
         <p class="hint">برای وقتی چیزی درست کار نمی‌کند. در کار روزمره لازم نیست.</p>
@@ -426,9 +514,24 @@
   </main>
 </div>
 
+  <!-- asked before anything is written to Orash -->
+  <div id="askWrap" class="modal-wrap hidden" role="dialog" aria-modal="true" aria-labelledby="askTitle">
+    <div class="modal">
+      <h2 id="askTitle">کالا در اوراش ثبت نشده است</h2>
+      <dl class="chips" id="askFacts"></dl>
+      <p class="hint">اگر خودتان ثبت نمی‌کنید، کد و عنوان بالا را به تیم حسابداری بدهید تا ثبتش کنند.</p>
+      <div class="row modal-actions">
+        <button id="askConfirm" class="primary">همین حالا ثبت کن</button>
+        <button id="askCancel" class="ghost">ثبت نکن — به حسابداری می‌گویم</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/vendor/jsQR.js"></script>
   <script src="/vendor/qrcode-gen.js"></script>
   <script src="/second-group.js"></script>
+  <script src="/packing.js"></script>
+  <script src="/warehouse-doc.js"></script>
   <script src="/scan-core.js"></script>
   <script src="/scan-sources.js"></script>
   <script src="/app.js"></script>

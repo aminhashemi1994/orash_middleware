@@ -99,9 +99,11 @@
     pending: ['⋯', 'در صف', ''],
     sending: ['', 'در حال ارسال', 'busy'],
     ok:      ['✓', 'ثبت شد', 'good'],
+    exists:  ['✓', 'از قبل ثبت است', 'good'],
     failed:  ['✗', 'ناموفق', 'bad'],
     invalid: ['!', 'ناقص', 'bad'],
     held:    ['◷', 'آماده ثبت', ''],
+    absent:  ['?', 'در اوراش نیست', 'busy'],
   };
 
   /**
@@ -120,6 +122,7 @@
 
     const facts = [
       ['سریال', d.serial ? esc(d.serial) : null],
+      ['رنگ', d.color ? esc(d.color) : null],
       // Always shown, even when absent: on a cable, a missing length is itself
       // worth seeing — it means the label predates the متراژ field.
       ['متراژ', d.lengthValue ? `${esc(d.lengthValue)} متر` : '<span class="dim">—</span>'],
@@ -174,7 +177,7 @@
         b.addEventListener('click', fn);
         actions.appendChild(b);
       };
-      if (item.status === 'held' || item.status === 'failed' || item.status === 'invalid') {
+      if (['held', 'failed', 'invalid', 'absent'].includes(item.status)) {
         addBtn('ثبت', 'ارسال به سرویس', () => enqueueSend(item), 'q-btn-go');
       }
       addBtn('در فرم', 'ریختن مقادیر در فرم ثبت کالا', () => {
@@ -202,7 +205,7 @@
     el('scanOkCount').textContent = String(scan.queue.filter((i) => i.status === 'ok').length);
     el('scanBadCount').textContent = String(scan.queue.filter((i) => i.status === 'failed' || i.status === 'invalid').length);
 
-    const waiting = scan.queue.filter((i) => i.status === 'held' || i.status === 'failed').length;
+    const waiting = scan.queue.filter((i) => ['held', 'failed', 'absent'].includes(i.status)).length;
     el('btnScanSendAll').disabled = waiting === 0;
     el('btnScanSendAll').textContent = waiting ? `ثبت ${waiting} ردیف در انتظار` : 'ثبت ردیف‌های در انتظار';
   }
@@ -294,6 +297,31 @@
     renderQueue();
 
     try {
+      // Never write blind: a good that is already registered needs nothing, and
+      // one that is missing is the operator's call.
+      const found = await goodExists(item.data);
+      if (found.ok && found.exists) {
+        item.status = 'exists';
+        item.message = 'این کالا از قبل در اوراش ثبت شده است';
+        log('good', `از قبل ثبت است — ${esc(item.data.name || '')}`, `<p>${esc(item.message)}</p>`);
+        ScanSources.phone.report({ ok: true, code: item.data.code, message: item.message,
+          name: item.data.name, source: item.source });
+        return;
+      }
+      if (found.ok && !found.exists && !await askToRegister(item.data)) {
+        item.status = 'absent';
+        item.message = 'در اوراش ثبت نیست — به تیم حسابداری اطلاع دهید';
+        log('busy', `ثبت نشد — ${esc(item.data.name || '')}`, `<p>${esc(item.message)}</p>`);
+        return;
+      }
+      if (!found.ok) {
+        // The check itself failed; say so instead of registering on a guess.
+        item.status = 'failed';
+        item.message = 'بررسی وجود کالا ناموفق بود: ' + (found.message || '');
+        log('bad', `بررسی ناموفق — ${esc(item.data.name || '')}`, `<p>${esc(item.message)}</p>`);
+        return;
+      }
+
       const res = await postGood(item.data);
       item.status = res.ok ? 'ok' : 'failed';
       item.message = res.ok
@@ -322,7 +350,7 @@
 
   function sendAll() {
     for (const item of [...scan.queue].reverse()) {           // oldest first
-      if (item.status === 'held' || item.status === 'failed') enqueueSend(item);
+      if (['held', 'failed', 'absent'].includes(item.status)) enqueueSend(item);
     }
   }
 

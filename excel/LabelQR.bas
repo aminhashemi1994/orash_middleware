@@ -11,7 +11,8 @@ Private Const LQ_SHEET As String = "صدور"
 Private Const LQ_CELL_CODE As String = "Z3"
 Private Const LQ_CELL_SERIAL As String = "C4"
 Private Const LQ_CELL_LENGTH As String = "D7"      ' متراژ کابل — یک عدد
-Private Const LQ_CELLS_NAME As String = "C5,C6,D9"
+Private Const LQ_CELLS_NAME As String = "C5,C6"   ' رنگ دیگر در نام ادغام نمی‌شود
+Private Const LQ_CELL_COLOR As String = "D9"      ' رنگ، به‌صورت کلید جداگانه
 Private Const LQ_SEPARATOR As String = " "
 Private Const LQ_MODE As String = "L"          ' این QR از لیبل ساخته شده
 
@@ -1433,10 +1434,12 @@ Public Function LabelPayloadJson() As String
     Set ws = ThisWorkbook.Worksheets(LQ_SHEET)
 
     Dim code As String, serial As String, goodName As String, lengthValue As String
+    Dim colorName As String
     code = LQ_ToLatinDigits(LQ_CleanCell(ws.Range(LQ_CELL_CODE).Value))
     serial = LQ_ToLatinDigits(LQ_CleanCell(ws.Range(LQ_CELL_SERIAL).Value))
     goodName = LQ_JoinCells(ws, LQ_CELLS_NAME)
     lengthValue = LQ_ToLatinDigits(LQ_CleanCell(ws.Range(LQ_CELL_LENGTH).Value))
+    colorName = LQ_CleanCell(ws.Range(LQ_CELL_COLOR).Value)
 
     Dim out As String
     out = "{"
@@ -1444,6 +1447,11 @@ Public Function LabelPayloadJson() As String
     out = out & """code"":" & LQ_JsonString(code) & ","
     out = out & """name"":" & LQ_JsonString(goodName) & ","
     out = out & """serial"":" & LQ_JsonString(serial)
+
+    ' رنگ اختیاری است: سلول خالی یعنی کلید اصلاً نوشته نشود.
+    If Len(colorName) > 0 Then
+        out = out & ",""color"":" & LQ_JsonString(colorName)
+    End If
 
     ' A number, not a string: Orash's lengthValue is a decimal. An empty or
     ' non-numeric cell is left out entirely rather than sent as 0.

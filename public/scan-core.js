@@ -31,14 +31,16 @@
     'criterionDimensions',
   ]);
   const BOOLEAN = new Set(['isActive', 'isAdded', 'isBuyAdded', 'serialsControl']);
-  const STRING = new Set(['code', 'name', 'serial', 'saleName', 'nationalCode', 'mode']);
+  const STRING = new Set(['code', 'name', 'serial', 'saleName', 'nationalCode', 'mode', 'color']);
 
   /**
    * Fields that are ours, not the service's. They travel in the QR to tell this
    * system how to fill in the rest, and are stripped before anything is sent to
    * Orash — `CreateGood` has no such member and never will.
    */
-  const LOCAL = new Set(['mode']);
+  // `color` joins `mode` here: the label carries it, the panel shows it, but
+  // CreateGood has no colour field to put it in.
+  const LOCAL = new Set(['mode', 'color']);
 
   /** The QR was written by the label sheet; more modes will follow. */
   const MODES = { LABEL: 'L' };
@@ -111,6 +113,7 @@
     goodcategoryidref: 'goodCategoryIdRef', category: 'goodCategoryIdRef',
     patternidref: 'patternIdRef', pattern: 'patternIdRef',
     mode: 'mode', m: 'mode',
+    color: 'color', 'رنگ': 'color',
     lengthvalue: 'lengthValue', length: 'lengthValue',
     'طول': 'lengthValue',                        // طول
     'متراژ': 'lengthValue',                      // متراژ
