@@ -121,11 +121,16 @@
     const family = sub.status === 'ok' ? sub.matches[0] : null;
 
     const facts = [
+      ['تعداد بسته', (item.count || 1) > 1 ? esc(item.count) : null],
       ['سریال', d.serial ? esc(d.serial) : null],
       ['رنگ', d.color ? esc(d.color) : null],
       // Always shown, even when absent: on a cable, a missing length is itself
       // worth seeing — it means the label predates the متراژ field.
-      ['متراژ', d.lengthValue ? `${esc(d.lengthValue)} متر` : '<span class="dim">—</span>'],
+      ['متراژ', d.lengthValue
+        ? ((item.count || 1) > 1
+          ? `${esc(item.count)} × ${esc(d.lengthValue)} = ${esc(item.count * Number(d.lengthValue))} متر`
+          : `${esc(d.lengthValue)} متر`)
+        : '<span class="dim">—</span>'],
       ['گروه', family ? esc(family.name) : `<span class="bad">${esc(sub.message)}</span>`],
     ].filter(([, v]) => v);
 
@@ -147,11 +152,13 @@
       const row = document.createElement('article');
       row.className = 'qrow';
       row.dataset.status = item.status;
+      row.dataset.id = String(item.id);
 
       row.innerHTML = `
         <div class="q-ring">${glyph}</div>
         <div class="q-main">
           <div class="q-title">
+            ${(item.count || 1) > 1 ? `<span class="q-count">×${esc(item.count)}</span>` : ''}
             <span class="q-code">${esc(item.data.code || '—')}</span>
             <span class="q-name">${esc(item.data.name || 'بدون عنوان')}</span>
           </div>
@@ -218,6 +225,34 @@
   // ------------------------------------------------------------------ intake
 
   /** Entry point for every source. */
+  /**
+   * What makes two scans the same line: the product, the length of that کلاف,
+   * and how it is packed. Two کلاف of one cable at different lengths stay
+   * apart — the length belongs to the کلاف, not to the product.
+   */
+  function queueKey(d) {
+    return [d.code, Number(d.lengthValue) || 0, d.mode || '', d.color || ''].join('|');
+  }
+
+  /**
+   * Make the row that just grew impossible to miss.
+   *
+   * A merged scan changes a number in a list that is already long — without
+   * this, three scans and one scan look identical at a glance. The row is
+   * re-rendered by the caller, so the flash is applied on the next frame.
+   */
+  function flashRow(id) {
+    requestAnimationFrame(() => {
+      const row = document.querySelector(`.qrow[data-id="${id}"]`);
+      if (!row) return;
+      row.classList.remove('merged');
+      void row.offsetWidth;              // restart the animation on a repeat scan
+      row.classList.add('merged');
+      row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      setTimeout(() => row.classList.remove('merged'), 1600);
+    });
+  }
+
   function handleScan({ text, source, mode }) {
     const parsed = ScanCore.parse(text);
     beep(parsed.ok);
@@ -235,6 +270,25 @@
       const data = applyLockedGoodFields(ScanCore.withDefaults(record.data, defaults));
       if (mode && !data.mode) data.mode = mode;
       const errs = ScanCore.validate(data);
+
+      // The same cable at the same length is the same line, counted — one scan
+      // per کلاف. Only a row still waiting can absorb a scan: once it has been
+      // sent, or refused, adding to it would change what was already decided.
+      const twin = !errs.length && scan.queue.find(
+        (q) => q.status === 'held' && queueKey(q.data) === queueKey(data));
+      if (twin) {
+        twin.count = (twin.count || 1) + 1;
+        twin.serials = [...(twin.serials || [twin.data.serial]), data.serial];
+        twin.at = nowLabel();
+        const total = twin.count * (Number(data.lengthValue) || 0);
+        log('good', `به ردیف موجود اضافه شد — حالا ${twin.count} بسته`,
+          `<p>${esc(data.name || data.code || '')}</p>`
+          + `<p>تعداد بسته: <b>${twin.count}</b> — مجموع متراژ: <b>${esc(total)}</b> متر</p>`);
+        flashRow(twin.id);
+        if (fillForm()) applyGoodToForm(data);
+        continue;
+      }
+
       const item = {
         id: ++scan.seq,
         at: nowLabel(),
@@ -242,6 +296,8 @@
         raw: parsed.raw,
         kind: parsed.kind,
         data,
+        count: 1,
+        serials: [data.serial],
         notes: [...record.notes, ...(record.unknown.length ? ['فیلدهای ناشناخته نادیده گرفته شد: ' + record.unknown.join(', ')] : [])],
         status: errs.length ? 'invalid' : 'held',
         message: errs.length ? errs.join(' • ') : record.notes.join(' • '),

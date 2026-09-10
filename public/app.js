@@ -705,7 +705,10 @@ function jalaliNow() {
 /** Scans worth putting on a document: everything that parsed cleanly. */
 function docSourceRows() {
   const queue = (window.ScanPanel && window.ScanPanel.scan && window.ScanPanel.scan.queue) || [];
-  return queue.filter((i) => i.status !== 'invalid').map((i) => i.data);
+  // Carry each row's count: the queue has already merged repeat scans, so a row
+  // can stand for several کلاف.
+  return queue.filter((i) => i.status !== 'invalid')
+    .map((i) => ({ ...i.data, count: i.count || 1, serials: i.serials || [i.data.serial] }));
 }
 
 function renderDocLines() {

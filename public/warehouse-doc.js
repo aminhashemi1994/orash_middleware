@@ -48,7 +48,9 @@
   /**
    * One line per (goods code + متراژ + packing), counting the scans in each.
    *
-   * @param {Array} items  scanned records: { code, name, serial, lengthValue, mode, color }
+   * @param {Array} items  scanned records: { code, name, serial, lengthValue,
+   *   mode, color, count?, serials? } — `count` is how many کلاف that queue row
+   *   already stands for, since the queue merges repeat scans as they arrive.
    * @returns {{lines: Array, errors: Array}}
    */
   function aggregate(items) {
@@ -66,10 +68,12 @@
       // Length is part of the key: two کلاف of the same cable at different
       // lengths are different lines, not one line of two.
       const key = `${data.code}|${length}|${pack.id}`;
+      const count = Math.max(1, Number(data.count) || 1);
+      const serials = data.serials && data.serials.length ? data.serials : [data.serial];
       const line = byKey.get(key);
       if (line) {
-        line.count += 1;
-        line.serials.push(data.serial);
+        line.count += count;
+        line.serials.push(...serials);
       } else {
         byKey.set(key, {
           code: data.code,
@@ -77,8 +81,8 @@
           lengthValue: length,
           packingId: pack.id,
           packingTitle: pack.title,
-          count: 1,
-          serials: [data.serial],
+          count,
+          serials: [...serials],
         });
       }
     });
