@@ -63,6 +63,14 @@ async function callProxy(name, { method = 'POST', query = null, body = null } = 
   }
   const res = await fetch(url, init);
   const json = await res.json();
+  // The service rejecting our token means the session is over, whatever the
+  // clock says — drop it rather than let every later call fail silently.
+  if (json && json.upstreamStatus === 401 && state.token) {
+    clearSession();
+    state.token = null;
+    setLoginState('نشست منقضی شده — دوباره وارد شوید', 'bad');
+    logout();
+  }
   return { httpStatus: res.status, ...json };
 }
 
@@ -262,6 +270,74 @@ const isUnreachable = (r) => !r.ok && r.httpStatus === 502;
  * elements (the rail pill, the database badge, the scanner cards) already exist
  * while the gate is up, so entering is just a swap — no state to rebuild.
  */
+/**
+ * Keeping the operator signed in across a refresh.
+ *
+ * The session lives in this browser's own localStorage and nowhere else — it is
+ * never sent anywhere, so signing in here has no effect on any other machine,
+ * and a phone or a second PC still has to sign in for itself. It expires two
+ * hours after signing in, whatever the Orash token's own lifetime, so a
+ * forgotten browser does not stay able to write to production all day.
+ */
+const SESSION_KEY = 'orash.session';
+const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
+
+function saveSession(name) {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify({
+      token: state.token,
+      userId: state.userId,
+      name,
+      uniqueID: uniqueID(),
+      username: $('username').value,
+      expiresAt: Date.now() + SESSION_TTL_MS,
+    }));
+  } catch { /* private mode, or storage disabled — sign-in still works */ }
+}
+
+function clearSession() {
+  try { localStorage.removeItem(SESSION_KEY); } catch { /* nothing to clear */ }
+}
+
+/** @returns {object|null} the stored session, or null when absent or expired. */
+function readSession() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+    if (!raw || !raw.token) return null;
+    if (!(raw.expiresAt > Date.now())) { clearSession(); return null; }
+    return raw;
+  } catch { return null; }
+}
+
+/** How long is left, for the profile panel. */
+function sessionRemaining(expiresAt) {
+  const mins = Math.max(0, Math.round((expiresAt - Date.now()) / 60000));
+  return mins >= 60 ? `${Math.floor(mins / 60)} ساعت و ${mins % 60} دقیقه` : `${mins} دقیقه`;
+}
+
+/**
+ * Come back to a signed-in panel after a refresh.
+ * @returns {boolean} whether a session was restored.
+ */
+function restoreSession() {
+  const saved = readSession();
+  if (!saved) return false;
+  // The database list is already loaded; only a session for the database this
+  // panel is configured for can be resumed.
+  const sel = $('database');
+  if (![...sel.options].some((o) => o.value === saved.uniqueID)) { clearSession(); return false; }
+  sel.value = saved.uniqueID;
+  state.token = saved.token;
+  state.userId = saved.userId;
+  if (saved.username) $('username').value = saved.username;
+  markDatabaseBadge();
+  enterApp(saved.name);
+  setLoginState('ورود موفق ✓ (' + (saved.name || '') + ')', 'good');
+  refreshSubmitEnabled();
+  $('s_session').textContent = `تا ${sessionRemaining(saved.expiresAt)} دیگر معتبر است`;
+  return true;
+}
+
 function enterApp(displayName) {
   $('loginView').classList.add('hidden');
   $('appShell').classList.remove('hidden');
@@ -286,8 +362,10 @@ function enterApp(displayName) {
 
 /** Back to the gate. The token is dropped, so nothing can be submitted again. */
 function logout() {
+  clearSession();
   state.token = null;
   state.userId = null;
+  $('s_session').textContent = '—';
   $('password').value = '';
   $('loginStatus').classList.add('hidden');
   $('appShell').classList.add('hidden');
@@ -320,6 +398,8 @@ async function login() {
     state.userId = userOpt?.dataset.id ? Number(userOpt.dataset.id) : null;
     setLoginState('ورود موفق ✓ (' + (content.name || username) + ')', 'good');
     console.log('[login] success', { username, uniqueID: uid, name: content.name, userId: state.userId });
+    saveSession(content.name || username);
+    $('s_session').textContent = `تا ${sessionRemaining(Date.now() + SESSION_TTL_MS)} دیگر معتبر است`;
     $('loginStatus').classList.add('hidden');
     enterApp(content.name || username);
     refreshSubmitEnabled();          // unblock the forms before the slow part
@@ -1354,6 +1434,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   try {
     await loadConfig();
     await loadDatabases();
+    restoreSession();
   } catch (err) {
     setLoginState('خطا در آماده‌سازی', 'bad');
     $('btnLogin').disabled = true;
