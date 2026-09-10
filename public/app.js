@@ -335,6 +335,8 @@ function restoreSession() {
   setLoginState('ورود موفق ✓ (' + (saved.name || '') + ')', 'good');
   refreshSubmitEnabled();
   $('s_session').textContent = `تا ${sessionRemaining(saved.expiresAt)} دیگر معتبر است`;
+  loadDocLookups(true);
+  renderDocLines();
   return true;
 }
 
@@ -399,6 +401,7 @@ async function login() {
     setLoginState('ورود موفق ✓ (' + (content.name || username) + ')', 'good');
     console.log('[login] success', { username, uniqueID: uid, name: content.name, userId: state.userId });
     saveSession(content.name || username);
+    loadDocLookups(true);        // warehouses and accounts, ready before they are needed
     $('s_session').textContent = `تا ${sessionRemaining(Date.now() + SESSION_TTL_MS)} دیگر معتبر است`;
     $('loginStatus').classList.add('hidden');
     enterApp(content.name || username);
@@ -466,7 +469,7 @@ function refreshSubmitEnabled() {
   const title = noWrite ? 'ثبت روی پایگاه تولید مسدود است' : (!state.token ? 'ابتدا وارد شوید' : '');
   const b = $('btnSubmitGood');
   if (b) { b.disabled = blocked; b.title = title; }
-  for (const id of ['btnLoadGoodsRef', 'btnLoadCodeRef', 'btnDocLoad', 'ddLoad']) {
+  for (const id of ['btnLoadGoodsRef', 'btnLoadCodeRef', 'ddLoad']) {
     const ref = $(id);
     if (ref) ref.disabled = !state.token;
   }
@@ -659,8 +662,14 @@ async function loadComboRows() {
   return Object.fromEntries(entries.map(([key], i) => [key, results[i]]));
 }
 
-async function loadDocLookups() {
-  if (!state.token) { alert('ابتدا وارد شوید.'); return; }
+/**
+ * The warehouse lists, loaded once per session and re-read on demand.
+ *
+ * `quiet` is what the automatic load after sign-in uses: it must not pop an
+ * alert or shout at an operator who has not opened this form yet.
+ */
+async function loadDocLookups(quiet) {
+  if (!state.token) { if (!quiet) alert('ابتدا وارد شوید.'); return; }
   setPill($('docState'), 'در حال بارگذاری…', 'busy');
   try {
     const rows = await loadComboRows();
@@ -1473,9 +1482,14 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
     ddSetStatus('همه پاک شد — برای اعمال، «ذخیره» را بزنید.', '');
   });
-  $('btnDocLoad').addEventListener('click', loadDocLookups);
-  $('btnDocPreview').addEventListener('click', renderDocLines);
+  $('btnDocRefresh').addEventListener('click', async () => {
+    await loadDocLookups(false);
+    renderDocLines();
+  });
   $('btnDocSubmit').addEventListener('click', submitDoc);
+  // The document table follows the scan queue on its own — the operator should
+  // never have to press a button to see what they just scanned.
+  window.onScanQueueChanged = renderDocLines;
   $('pkAdd').addEventListener('click', () => {
     pkEdit.rows.push({ title: '', id: '' });
     renderPackingTable();

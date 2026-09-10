@@ -212,6 +212,10 @@
     el('scanOkCount').textContent = String(scan.queue.filter((i) => i.status === 'ok').length);
     el('scanBadCount').textContent = String(scan.queue.filter((i) => i.status === 'failed' || i.status === 'invalid').length);
 
+    // Anything that reads the queue — the warehouse document table — rebuilds
+    // from here, so it never lags behind what was just scanned.
+    if (typeof window.onScanQueueChanged === 'function') window.onScanQueueChanged();
+
     const waiting = scan.queue.filter((i) => ['held', 'failed', 'absent'].includes(i.status)).length;
     el('btnScanSendAll').disabled = waiting === 0;
     el('btnScanSendAll').textContent = waiting ? `ثبت ${waiting} ردیف در انتظار` : 'ثبت ردیف‌های در انتظار';
